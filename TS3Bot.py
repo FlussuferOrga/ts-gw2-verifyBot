@@ -10,7 +10,8 @@ import configparser #parse in configuration
 import ast #eval a string to a list/boolean (for cmd_list from 'bot settings' or DEBUG from config)
 import schedule # Allows auditing of users every X days
 from bot_messages import * #Import all Static messages the BOT may need
-
+import sys
+import ipc
 
 #######################################
 #### Load Configs
@@ -33,7 +34,7 @@ passwd = configs.get('teamspeak connection settings','passwd')
 server_id = configs.get('teamspeak other settings','server_id')
 channel_name = configs.get('teamspeak other settings','channel_name')
 verified_group = configs.get('teamspeak other settings','verified_group')
-
+verified_group_id = -1 # will be cached later
 
 # BOT Settings
 bot_nickname = configs.get('bot settings','bot_nickname')
@@ -73,6 +74,8 @@ DEBUG = ast.literal_eval(configs.get('DEBUGGING','DEBUG'))
 
 locale = getLocale(locale_setting)
 
+default_server_group_id = -1
+
 if bot_sleep_idle > 300:
     TS3Auth.log("WARNING: setting bot_sleep_idle to a value higher than 300 seconds could result in timeouts!")
 
@@ -81,7 +84,6 @@ if bot_sleep_idle > 300:
 #######################################
 ## Basic Classes
 #######################################
-
 class Bot:
     def __init__(self,db,ts_connection):
         admin_data=ts_connection.query("whoami").first()
@@ -90,17 +92,17 @@ class Bot:
         self.name=admin_data.get('client_login_name')
         self.client_id=admin_data.get('client_id')
         self.nickname=bot_nickname
-        self.vgrp_id=None
-        self.groupFind(verified_group)
+        self.vgrp_id = self.groupFind(verified_group)
         self.getUserDatabase()
         self.c_audit_date=datetime.date.today() # Todays Date
 
-    #Helps find the group ID for 'verified users group'
+    #Helps find the group ID for a group name
     def groupFind(self,group_to_find):
         self.groups_list=ts3conn.query("servergrouplist").all()
         for group in self.groups_list:
             if group.get('name') == group_to_find:
-                self.vgrp_id=group.get('sgid')
+                return group.get('sgid')
+        return -1
 
     def clientNeedsVerify(self,unique_client_id):
         client_db_id = self.getTsDatabaseID(unique_client_id)
@@ -235,22 +237,19 @@ class Bot:
     def getTsUniqueID(self,client_id):
         return self.ts_connection.query("clientgetuidfromclid", clid=client_id).first().get('cldbid')
 
-#######################################
+    def login_event_handler(self, ts3conn, event):
+        raw_sgroups = event.parsed[0].get('client_servergroups')
+        raw_clid = event.parsed[0].get('clid')
+        raw_cluid = event.parsed[0].get('client_unique_identifier')
 
-#######################################
-## Functions
-#######################################
+        if raw_clid == self.client_id:
+            return
 
-# Restricts commands for the channel messages (can add custom ones). Also add relevant code to 'rec_type 2' in my_event_handler.
-def commandCheck(command_string):
-    action=0
-    for allowed_cmd in cmd_list:
-        if re.match('(^%s)\s*' %allowed_cmd,command_string):
-            action=allowed_cmd
-    return action
+        if self.clientNeedsVerify(raw_cluid):
+            ts3conn.exec_("sendtextmessage", targetmode=1, target=raw_clid, msg=locale.get("bot_msg_verify"))
 
-# Handler that is used every time an event (message) is received from teamspeak server
-def verification_request_handler(ts3conn, event):
+    # Handler that is used every time an event (message) is received from teamspeak server
+    def message_event_handler(self, ts3conn, event):
         """
         *sender* is the TS3Connection instance, that received the event.
 
@@ -265,12 +264,12 @@ def verification_request_handler(ts3conn, event):
             print("\n\n")
 
         raw_cmd=event.parsed[0].get('msg')
-        rec_from_name=event.parsed[0].get('invokername').encode('utf-8') #fix any encoding issues introdcued by Teamspeak
+        rec_from_name=event.parsed[0].get('invokername').encode('utf-8') #fix any encoding issues introduced by Teamspeak
         rec_from_uid=event.parsed[0].get('invokeruid')
         rec_from_id=event.parsed[0].get('invokerid')
         rec_type=event.parsed[0].get('targetmode')
 
-        if rec_from_uid == bot_nickname:
+        if rec_from_id == self.client_id:
             return #ignore our own messages.
         try:
             # Type 2 means it was channel text
@@ -335,10 +334,30 @@ def verification_request_handler(ts3conn, event):
                 else: 
                     ts3conn.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_rcv_default"))
                     TS3Auth.log("Received bad response from %s [msg= %s]" %(rec_from_name,raw_cmd.encode('utf-8')))
+                    sys.exit(0)
         except Exception as e:
             TS3Auth.log('BOT Event: Something went wrong during message received from teamspeak server. Likely bad user command/message.')
             TS3Auth.log(e)
         return None
+
+#######################################
+
+#######################################
+## Functions
+#######################################
+
+# Restricts commands for the channel messages (can add custom ones). Also add relevant code to 'rec_type 2' in my_event_handler.
+def commandCheck(command_string):
+    action=0
+    for allowed_cmd in cmd_list:
+        if re.match('(^%s)\s*' %allowed_cmd,command_string):
+            action=allowed_cmd
+    return action
+
+
+
+
+
 
 #######################################
 
@@ -349,6 +368,8 @@ def verification_request_handler(ts3conn, event):
 
 bot_loop_forever=True
 TS3Auth.log("Initializing script....")
+# ipc.Server(10137).run()
+
 while bot_loop_forever:
     try:    
         TS3Auth.log("Connecting to Teamspeak server...")
@@ -400,6 +421,12 @@ while bot_loop_forever:
                     TS3Auth.log ("Unable to locate channel with name '%s'. Sleeping for 10 seconds..." %(channel_name))
                     time.sleep(10)
 
+            # Find the verify group ID
+            verified_group_id = BOT.groupFind(verified_group)
+
+            # Find default server group
+            default_server_group_id = ts3conn.query("serverinfo").first().get("virtualserver_default_server_group")
+
             # Move ourselves to the Verify chanel and register for text events
             try:
                 ts3conn.exec_("clientmove", clid=BOT.client_id, cid=verify_channel_id)
@@ -409,6 +436,7 @@ while bot_loop_forever:
             
             ts3conn.exec_("servernotifyregister", event="textchannel") #alert channel chat
             ts3conn.exec_("servernotifyregister", event="textprivate") #alert Private chat
+            ts3conn.exec_("servernotifyregister", event="server")
 
             #Send message to the server that the BOT is up
             ts3conn.exec_("sendtextmessage", targetmode=3, target=server_id, msg=locale.get("bot_msg",(bot_nickname,channel_name)))
@@ -439,7 +467,17 @@ while bot_loop_forever:
                 except ts3.query.TS3TimeoutError:
                     pass
                 else:
-                    verification_request_handler(ts3conn, event) # handle event
+                    try:
+                        if "msg" in event.parsed[0]:
+                            # text message
+                            BOT.message_event_handler(ts3conn, event) # handle event
+                        elif "reasonmsg" in event.parsed[0]:
+                            # user left
+                            pass
+                        else:
+                            BOT.login_event_handler(ts3conn, event)
+                    except Exception as ex:
+                        TS3Auth.log("Error while trying to handle event %s: %s" % (str(event), str(ex)))
 
         TS3Auth.log("It appears the BOT has lost connection to teamspeak. Trying to restart connection in %s seconds...." %bot_sleep_conn_lost)
         time.sleep(bot_sleep_conn_lost)
