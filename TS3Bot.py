@@ -102,6 +102,9 @@ class Bot:
     def clientNeedsVerify(self,unique_client_id):
         client_db_id = self.getTsDatabaseID(unique_client_id)
 
+        print(self.ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all())
+        print(verified_group)
+
         #Check if user is in verified group
         if any(perm_grp.get('name') == verified_group for perm_grp in self.ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all()):
             return False #User already verified
@@ -283,7 +286,7 @@ class Bot:
                 cmd=commandCheck(raw_cmd) #sanitize the commands but also restricts commands to a list of known allowed commands
 
                 if cmd == 'verifyme':
-                    if BOT.clientNeedsVerify(rec_from_uid):
+                    if self.clientNeedsVerify(rec_from_uid):
                         TS3Auth.log("Verify Request Recieved from user '%s'. Sending PM now...\n        ...waiting for user response." %rec_from_name)
                         self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_verify"))
                     else:
@@ -300,7 +303,7 @@ class Bot:
                     pair=re.search(reg_api_auth,raw_cmd)
                     uapi=pair.group(1)
 
-                    if BOT.clientNeedsVerify(rec_from_uid):
+                    if self.clientNeedsVerify(rec_from_uid):
                         TS3Auth.log("Received verify response from %s" %rec_from_name)
                         auth=TS3Auth.auth_request(uapi)
                         
@@ -308,20 +311,20 @@ class Bot:
                             TS3Auth.log('Name: |%s| API: |%s|' %(auth.name,uapi))
 
                         if auth.success:
-                            limit_hit=BOT.TsClientLimitReached(auth.name)
+                            limit_hit=self.TsClientLimitReached(auth.name)
                             if DEBUG:
                                 print("Limit hit check: %s" %limit_hit)
                             if not limit_hit:
                                 TS3Auth.log("Setting permissions for %s as verified." %rec_from_name)
 
                                 #set permissions
-                                BOT.setPermissions(rec_from_uid)
+                                self.setPermissions(rec_from_uid)
 
                                 #get todays date
                                 today_date=datetime.date.today()
 
                                 #Add user to database so we can query their API key over time to ensure they are still on our server
-                                BOT.addUserToDB(rec_from_uid,auth.name,uapi,today_date,today_date)
+                                self.addUserToDB(rec_from_uid,auth.name,uapi,today_date,today_date)
                                 print ("Added user to DB with ID %s" %rec_from_uid)
 
                                 #notify user they are verified
@@ -340,7 +343,7 @@ class Bot:
                 else: 
                     self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_rcv_default"))
                     TS3Auth.log("Received bad response from %s [msg= %s]" %(rec_from_name,raw_cmd.encode('utf-8')))
-                    sys.exit(0)
+                    # sys.exit(0)
         except Exception as e:
             TS3Auth.log('BOT Event: Something went wrong during message received from teamspeak server. Likely bad user command/message.')
             TS3Auth.log(e)
