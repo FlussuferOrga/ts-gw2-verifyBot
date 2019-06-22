@@ -260,14 +260,11 @@ class Bot:
     # Handler that is used every time an event (message) is received from teamspeak server
     def message_event_handler(self, event):
         """
-        *sender* is the TS3Connection instance, that received the event.
-
         *event* is a ts3.response.TS3Event instance, that contains the name
         of the event and the data.
         """
         if DEBUG:
             print("\nEvent:")
-            #print("  sender:", sender)
             print("  event.event:", event.event)
             print("  event.parsed:", event.parsed)
             print("\n\n")
@@ -370,7 +367,7 @@ class CommanderChecker(Ticker):
         super(CommanderChecker, self).__init__(ts3bot, interval)
         self.commander_group_name = commander_group_name
         self.ipcserver = ipcserver
-        
+
         cgroups = list(filter(lambda g: g.get("name") == commander_group_name, self.ts3bot.ts_connection.query("channelgrouplist").all()))
         if len(cgroups) < 1:
             TS3Auth.log("Could not find a group called %s to determine commanders by. Disabling this feature." % (commander_group_name,))
@@ -382,9 +379,13 @@ class CommanderChecker(Ticker):
         self.commander_group = cgroups[0].get("cgid")
 
     def execute(self):
-        active_commanders_entries = [self.ts3bot.getUserDBEntry(self.ts3bot.getTsUniqueID(c.get("cldbid"))) 
-                                       for c in self.ts3bot.ts_connection.query("channelgroupclientlist", cgid=self.commander_group).all()]
-        active_commanders = [c["account_name"] for c in active_commanders_entries if c is not None]
+        active_commanders = []
+        try:
+            active_commanders_entries = [self.ts3bot.getUserDBEntry(self.ts3bot.getTsUniqueID(c.get("cldbid"))) 
+                                           for c in self.ts3bot.ts_connection.query("channelgroupclientlist", cgid=self.commander_group).all()]
+            active_commanders = [c["account_name"] for c in active_commanders_entries if c is not None]
+        except ts3.query.TS3QueryError:
+            pass # empty result set, no users with that group
         self.ipcserver.broadcast({"commanders": active_commanders})
 
 #######################################

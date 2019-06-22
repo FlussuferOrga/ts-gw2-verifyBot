@@ -54,7 +54,7 @@ timer_msg_broadcast = int(configs.get('bot settings','broadcast_message_timer'))
 ipc_port = int(configs.get('ipc settings','ipc_port'))
 
 poll_group_name = configs.get('ipc settings','poll_group_name')
-poll_group_poll_delay = configs.get('ipc settings','poll_group_poll_delay')
+poll_group_poll_delay = int(configs.get('ipc settings','poll_group_poll_delay'))
 
 purge_completely = False
 try:
