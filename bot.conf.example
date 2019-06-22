@@ -19,8 +19,6 @@ passwd = xxxxxxx
 
 #######################################
 
-
-
 #######################################
 
 [teamspeak other settings]
@@ -35,8 +33,6 @@ channel_name = Registration
 verified_group = Verified
 
 #######################################
-
-
 
 #######################################
 
@@ -93,6 +89,15 @@ required_servers = ['Kaineng','Tarnished Coast']
 
 # Required Level for at least one character on account (set to 0 to disable character checks (useful if Arena Net's GW2 API breaks again)
 required_level = 80
+
+#######################################
+
+#######################################
+
+[ipc settings]
+
+# What port the bot listens on for IPC requests
+ipc_port = 10137
 
 
 #######################################

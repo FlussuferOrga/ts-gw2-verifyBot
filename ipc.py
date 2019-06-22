@@ -5,8 +5,7 @@ import threading
 class Server(object):
     '''
     Server for broadcasting messages.
-    '''    
-
+    '''
     def __init__(self, port, max_clients = 5, timeout = 10):
         self.socket = socket.socket()
         self.port = port

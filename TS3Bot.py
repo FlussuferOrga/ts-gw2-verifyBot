@@ -10,6 +10,7 @@ import configparser #parse in configuration
 import ast #eval a string to a list/boolean (for cmd_list from 'bot settings' or DEBUG from config)
 import schedule # Allows auditing of users every X days
 from bot_messages import * #Import all Static messages the BOT may need
+from threading import Thread
 import sys
 import ipc
 
@@ -98,7 +99,7 @@ class Bot:
 
     #Helps find the group ID for a group name
     def groupFind(self,group_to_find):
-        self.groups_list=ts3conn.query("servergrouplist").all()
+        self.groups_list=self.ts_connection.query("servergrouplist").all()
         for group in self.groups_list:
             if group.get('name') == group_to_find:
                 return group.get('sgid')
@@ -108,7 +109,7 @@ class Bot:
         client_db_id = self.getTsDatabaseID(unique_client_id)
 
         #Check if user is in verified group
-        if any(perm_grp.get('name') == verified_group for perm_grp in ts3conn.query("servergroupsbyclientid", cldbid=client_db_id).all()):
+        if any(perm_grp.get('name') == verified_group for perm_grp in self.ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all()):
             return False #User already verified
 
         #Check if user is authenticated in database and if so, re-adds them to the group
@@ -154,6 +155,20 @@ class Bot:
                             pass
         except ts3.query.TS3QueryError as err:
             TS3Auth.log("BOT [removePermissions]: Failed; %s" %err) #likely due to bad client id
+
+    def getUserDBEntry(self,client_unique_id):
+        '''
+        Retrieves the DB entry for a unique client ID.
+        Is either a dictionary of database-field-names to values, or None if no such entry was found in the DB.
+        '''
+        entry = self.db_cursor.execute("SELECT * FROM users WHERE ts_db_id=?", (client_unique_id,)).fetchall()
+        if len(entry) < 1:
+            # user not registered
+            return None
+        entry = entry[0]
+        keys = self.db_cursor.description
+        assert len(entry) == len(keys)
+        return dict([(keys[i][0], entry[i]) for i in range(len(entry))])
                     
     def getUserDatabase(self):
         if os.path.isfile(self.db_name):
@@ -234,10 +249,10 @@ class Bot:
     def getTsDatabaseID(self,client_unique_id):
         return self.ts_connection.query("clientgetdbidfromuid", cluid=client_unique_id).first().get('cldbid')
 
-    def getTsUniqueID(self,client_id):
-        return self.ts_connection.query("clientgetuidfromclid", clid=client_id).first().get('cldbid')
+    def getTsUniqueID(self,client_db_id):
+        return self.ts_connection.query("clientgetnamefromdbid", cldbid=client_db_id).first().get('cluid')
 
-    def login_event_handler(self, ts3conn, event):
+    def login_event_handler(self, event):
         raw_sgroups = event.parsed[0].get('client_servergroups')
         raw_clid = event.parsed[0].get('clid')
         raw_cluid = event.parsed[0].get('client_unique_identifier')
@@ -246,10 +261,10 @@ class Bot:
             return
 
         if self.clientNeedsVerify(raw_cluid):
-            ts3conn.exec_("sendtextmessage", targetmode=1, target=raw_clid, msg=locale.get("bot_msg_verify"))
+            self.ts_connection.exec_("sendtextmessage", targetmode=1, target=raw_clid, msg=locale.get("bot_msg_verify"))
 
     # Handler that is used every time an event (message) is received from teamspeak server
-    def message_event_handler(self, ts3conn, event):
+    def message_event_handler(self, event):
         """
         *sender* is the TS3Connection instance, that received the event.
 
@@ -279,10 +294,10 @@ class Bot:
                 if cmd == 'verifyme':
                     if BOT.clientNeedsVerify(rec_from_uid):
                         TS3Auth.log("Verify Request Recieved from user '%s'. Sending PM now...\n        ...waiting for user response." %rec_from_name)
-                        ts3conn.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_verify"))
+                        self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_verify"))
                     else:
                         TS3Auth.log("Verify Request Recieved from user '%s'. Already verified, notified user." %rec_from_name)
-                        ts3conn.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_alrdy_verified"))
+                        self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_alrdy_verified"))
 
             # Type 1 means it was a private message
             elif rec_type == '1':
@@ -319,20 +334,20 @@ class Bot:
                                 print ("Added user to DB with ID %s" %rec_from_uid)
 
                                 #notify user they are verified
-                                ts3conn.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_success"))
+                                self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_success"))
                             else:
                                 # client limit is set and hit
-                                ts3conn.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_limit_Hit"))
+                                self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_limit_Hit"))
                                 TS3Auth.log("Received API Auth from %s, but %s has reached the client limit." %(rec_from_name,rec_from_name))
                         else:
                             pass
                             #Auth Failed
-                            ts3conn.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_fail"))
+                            self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_fail"))
                     else:
                         TS3Auth.log("Received API Auth from %s, but %s is already verified. Notified user as such." %(rec_from_name,rec_from_name))
-                        ts3conn.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_alrdy_verified"))
+                        self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_alrdy_verified"))
                 else: 
-                    ts3conn.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_rcv_default"))
+                    self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_rcv_default"))
                     TS3Auth.log("Received bad response from %s [msg= %s]" %(rec_from_name,raw_cmd.encode('utf-8')))
                     sys.exit(0)
         except Exception as e:
@@ -342,149 +357,38 @@ class Bot:
 
 #######################################
 
-#######################################
-## Functions
-#######################################
+class Ticker(object):
+    '''
+    Class that schedules events regularly and wraps the TS3Bot.
+    '''
+    def __init__(self, ts3bot, interval):
+        self.ts3bot = ts3bot
+        self.interval = interval
+        schedule.every(interval).seconds.do(self.execute)
 
-# Restricts commands for the channel messages (can add custom ones). Also add relevant code to 'rec_type 2' in my_event_handler.
-def commandCheck(command_string):
-    action=0
-    for allowed_cmd in cmd_list:
-        if re.match('(^%s)\s*' %allowed_cmd,command_string):
-            action=allowed_cmd
-    return action
-
-
-
-
-
+    def execute(self):
+        pass
 
 #######################################
 
+class CommanderChecker(Ticker):
+    def __init__(self, ts3bot, ipcserver, commander_group_name, interval = 60):
+        super(CommanderChecker, self).__init__(ts3bot, interval)
+        self.commander_group_name = commander_group_name
+        self.ipcserver = ipcserver
+        
+        cgroups = list(filter(lambda g: g.get("name") == commander_group_name, self.ts3bot.ts_connection.query("channelgrouplist").all()))
+        if len(cgroups) < 1:
+            TS3Auth.log("Could not find a group called %s to determine commanders by. Disabling this feature." % (commander_group_name,))
+        elif len(cgroups) > 1:
+            TS3Auth.log("Found more than one group called %s, which is very weird. Using the first one, but preceed with caution." % (commander_group_name,))
 
-#######################################
-# Begins the connect to Teamspeak
-#######################################
+        self.commander_group = cgroups[0].get("cgid")
 
-bot_loop_forever=True
-TS3Auth.log("Initializing script....")
-# ipc.Server(10137).run()
-
-while bot_loop_forever:
-    try:    
-        TS3Auth.log("Connecting to Teamspeak server...")
-        with ts3.query.TS3ServerConnection("telnet://%s:%s@%s:%s" % (user, passwd, host, str(port))) as ts3conn:
-            #ts3conn.exec_("login", client_login_name=user, client_login_password=passwd)
-
-            #Choose which server instance we want to join (unless multiple exist the default of 1 should be fine)
-            ts3conn.exec_("use", sid=server_id)
-
-            #Define our bots info
-            BOT=Bot(db_file_name,ts3conn)
-            TS3Auth.log ("BOT loaded into server (%s) as %s (%s). Nickname '%s'" %(server_id,BOT.name,BOT.client_id,BOT.nickname))
-
-            # What an absolute disaster of an API!
-            # Instead of giving a None to signify that no
-            # user with the specified username exists, a vacuous error
-            # "invalid clientID", is thrown from clientfind.
-            # So we have to catch exceptions to do control flow. 
-            # Thanks for nothing.
-            try:
-                imposter = ts3conn.query("clientfind", pattern=BOT.nickname).first() # check if nickname is already in use
-                if imposter:
-                    try:
-                        ts3conn.exec_("clientkick", reasonid=5, reasonmsg="Reserved Nickname", clid=imposter.get("clid"))
-                        TS3Auth.log("Kicked user who was using the reserved registration bot name '%s'." % (BOT.nickname,))
-                    except ts3.query.TS3QueryError as e:
-                        i = 1
-                        new_nick = "%s(%d)" % (BOT.nickname,i)
-                        try:
-                            while ts3conn.query("clientfind", pattern=new_nick).first():
-                                i += 1
-                                new_nick = "%s(%d)" % (BOT.nickname,i)
-                        except ts3.query.TS3QueryError as e:
-                            new_nick = "%s(%d)" % (BOT.nickname,i)
-                            ts3conn.exec_("clientupdate", client_nickname=new_nick)
-                            BOT.nickname = new_nick
-                            TS3Auth.log("Renamed self to '%s' after kicking existing user with reserved name failed. Warning: this usually only happens for serverquery logins, meaning you are running multiple bots or you are having stale logins from crashed bot instances on your server. Only restarts can solve the latter." % (new_nick,))
-            except ts3.query.TS3QueryError:
-                ts3conn.exec_("clientupdate", client_nickname=BOT.nickname)
-
-            # Find the verify channel
-            verify_channel_id=0
-            while verify_channel_id == 0:
-                try:
-                    channel = ts3conn.query("channelfind", pattern=channel_name).first()
-                    verify_channel_id=channel.get('cid')
-                    channel_name=channel.get('channel_name')
-                except:
-                    TS3Auth.log ("Unable to locate channel with name '%s'. Sleeping for 10 seconds..." %(channel_name))
-                    time.sleep(10)
-
-            # Find the verify group ID
-            verified_group_id = BOT.groupFind(verified_group)
-
-            # Find default server group
-            default_server_group_id = ts3conn.query("serverinfo").first().get("virtualserver_default_server_group")
-
-            # Move ourselves to the Verify chanel and register for text events
-            try:
-                ts3conn.exec_("clientmove", clid=BOT.client_id, cid=verify_channel_id)
-                TS3Auth.log ("BOT has joined channel '%s' (%s)." %(channel_name,verify_channel_id))
-            except ts3.query.TS3QueryError as chnl_err: #BOT move failed because
-                TS3Auth.log("BOT Attempted to join channel '%s' (%s) WARN: %s" %(channel_name,verify_channel_id,chnl_err.resp.error["msg"]))
-            
-            ts3conn.exec_("servernotifyregister", event="textchannel") #alert channel chat
-            ts3conn.exec_("servernotifyregister", event="textprivate") #alert Private chat
-            ts3conn.exec_("servernotifyregister", event="server")
-
-            #Send message to the server that the BOT is up
-            ts3conn.exec_("sendtextmessage", targetmode=3, target=server_id, msg=locale.get("bot_msg",(bot_nickname,channel_name)))
-            TS3Auth.log("BOT is now registered to receive messages!")
-
-            TS3Auth.log("BOT Database Audit policies initiating.")
-            # Always audit users on initialize if user audit date is up (in case the script is reloaded several times before audit interval hits, so we can ensure we maintain user database accurately)
-            BOT.auditUsers()
-
-            #Set audit schedule job to run in X days
-            schedule.every(audit_interval).days.do(BOT.auditUsers)
-
-            #Since v2 of the ts3 library, keepalive must be sent manually to not screw with threads
-            schedule.every(keepalive_interval).seconds.do(ts3conn.send_keepalive)
-
-            #Set schedule to advertise broadcast message in channel
-            if timer_msg_broadcast > 0:
-                    schedule.every(timer_msg_broadcast).seconds.do(BOT.broadcastMessage)
-            BOT.broadcastMessage() # Send initial message into channel
-
-            #Forces script to loop forever while we wait for events to come in, unless connection timed out. Then it should loop a new bot into creation.
-            TS3Auth.log("BOT now idle, waiting for requests.")
-            while ts3conn.is_connected():
-                #auditjob + keepalive check
-                schedule.run_pending()
-                try:
-                    event = ts3conn.wait_for_event(timeout=bot_sleep_idle)
-                except ts3.query.TS3TimeoutError:
-                    pass
-                else:
-                    try:
-                        if "msg" in event.parsed[0]:
-                            # text message
-                            BOT.message_event_handler(ts3conn, event) # handle event
-                        elif "reasonmsg" in event.parsed[0]:
-                            # user left
-                            pass
-                        else:
-                            BOT.login_event_handler(ts3conn, event)
-                    except Exception as ex:
-                        TS3Auth.log("Error while trying to handle event %s: %s" % (str(event), str(ex)))
-
-        TS3Auth.log("It appears the BOT has lost connection to teamspeak. Trying to restart connection in %s seconds...." %bot_sleep_conn_lost)
-        time.sleep(bot_sleep_conn_lost)
-
-    except (ConnectionRefusedError, ts3.query.TS3TransportError):
-            TS3Auth.log("Unable to reach teamspeak server..trying again in %s seconds..." %bot_sleep_conn_lost)
-            time.sleep(bot_sleep_conn_lost)
-
+    def execute(self):
+        active_commanders_entries = [self.ts3bot.getUserDBEntry(self.ts3bot.getTsUniqueID(c.get("cldbid"))) 
+                                       for c in self.ts3bot.ts_connection.query("channelgroupclientlist", cgid=self.commander_group).all()]
+        active_commanders = [c["account_name"] for c in active_commanders_entries if c is not None]
+        self.ipcserver.broadcast({"commanders": active_commanders})
 
 #######################################
