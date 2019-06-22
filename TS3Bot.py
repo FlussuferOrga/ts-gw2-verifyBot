@@ -374,6 +374,8 @@ class CommanderChecker(Ticker):
         cgroups = list(filter(lambda g: g.get("name") == commander_group_name, self.ts3bot.ts_connection.query("channelgrouplist").all()))
         if len(cgroups) < 1:
             TS3Auth.log("Could not find a group called %s to determine commanders by. Disabling this feature." % (commander_group_name,))
+            self.commander_group = -1
+            return
         elif len(cgroups) > 1:
             TS3Auth.log("Found more than one group called %s, which is very weird. Using the first one, but preceed with caution." % (commander_group_name,))
 
