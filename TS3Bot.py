@@ -33,22 +33,16 @@ passwd = configs.get('teamspeak connection settings','passwd')
 
 # Teamspeak Other Settings
 server_id = configs.get('teamspeak other settings','server_id')
-channel_name = configs.get('teamspeak other settings','channel_name')
 verified_group = configs.get('teamspeak other settings','verified_group')
 verified_group_id = -1 # will be cached later
 
 # BOT Settings
 bot_nickname = configs.get('bot settings','bot_nickname')
-bot_sleep_conn_lost = int(configs.get('bot settings','bot_sleep_conn_lost'))
 # this setting is technically not required anymore. It just shouldn't exceed 5 minutes to avoid timeouts. 
 # An appropriate user warning will be given.
 bot_sleep_idle = int(configs.get('bot settings','bot_sleep_idle'))
-cmd_list = ast.literal_eval(configs.get('bot settings','cmd_list'))
-db_file_name = configs.get('bot settings','db_file_name')
 audit_period = int(configs.get('bot settings','audit_period')) #How long a single user can go without being audited
-audit_interval = int(configs.get('bot settings','audit_interval')) # how often the BOT audits all users
 client_restriction_limit= int(configs.get('bot settings','client_restriction_limit'))
-timer_msg_broadcast = int(configs.get('bot settings','broadcast_message_timer'))
 
 purge_completely = False
 try:

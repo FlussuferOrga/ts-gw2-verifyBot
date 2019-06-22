@@ -99,6 +99,11 @@ required_level = 80
 # What port the bot listens on for IPC requests
 ipc_port = 10137
 
+# Group that is polled and sent via IPC regularly
+poll_group_name = 'Active Raidlead'
+
+# Seconds between group polls
+poll_group_poll_delay = 60
 
 #######################################
 
