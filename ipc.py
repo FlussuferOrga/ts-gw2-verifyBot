@@ -24,8 +24,7 @@ class Server(object):
         '''
         client,addr = cladr
         try:
-            x = client.send(json.dumps(message).encode("utf-8"))
-            print(x)
+            client.send(json.dumps(message).encode("utf-8"))
         except BrokenPipeError:
             print("Broken pipe for client %s:%s. Cleaning up connection." % (addr[0],str(addr[1])))
             return None

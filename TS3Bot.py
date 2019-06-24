@@ -102,9 +102,6 @@ class Bot:
     def clientNeedsVerify(self,unique_client_id):
         client_db_id = self.getTsDatabaseID(unique_client_id)
 
-        print(self.ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all())
-        print(verified_group)
-
         #Check if user is in verified group
         if any(perm_grp.get('name') == verified_group for perm_grp in self.ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all()):
             return False #User already verified
