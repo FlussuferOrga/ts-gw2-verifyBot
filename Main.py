@@ -182,7 +182,7 @@ while bot_loop_forever:
             ts3conn.exec_("servernotifyregister", event="server")
 
             #Send message to the server that the BOT is up
-            ts3conn.exec_("sendtextmessage", targetmode=3, target=server_id, msg=locale.get("bot_msg",(bot_nickname,channel_name)))
+            ts3conn.exec_("sendtextmessage", targetmode=3, target=server_id, msg=locale.get("bot_msg",(bot_nickname,)))
             TS3Auth.log("BOT is now registered to receive messages!")
 
             TS3Auth.log("BOT Database Audit policies initiating.")
