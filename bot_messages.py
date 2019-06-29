@@ -48,7 +48,7 @@ class English(Locale):
       self.set("bot_msg_verify", "Hello there! I believe you requested verification?\n\nIf so please reply back to THIS PRIVATE MESSAGE with your API key."+self.get("bot_msg_example")+self.get("bot_msg_note"))
       
       # Banner that we send to all users upon initialization
-      self.set("bot_msg", "%s is alive once again! Type 'verifyme' in the '%s' channel to begin verification!")
+      self.set("bot_msg", "%s is alive once again! Please reconnect to begin verification!")
 
       # Broadcast message
       self.set("bot_msg_broadcast", "Hello there! You can begin verification by typing 'verifyme' in this channel.")
@@ -88,7 +88,7 @@ class German(Locale):
     self.set("bot_msg_verify", "Hallöchen! Möchtest du dich registrieren?\n\nFalls ja, antworte bitte per PRIVATER NACHRICHT mit deinem API-Key."+self.get("bot_msg_example")+self.get("bot_msg_note"))
 
     # Banner that we send to all users upon initialization
-    self.set("bot_msg", "%s ist wieder da! Schreibe 'verifyme' in den '%s' Kanal um die Freischaltung zu beginnen!")
+    self.set("bot_msg", "%s ist wieder da! Verbinde dich neu um die Freischaltung zu beginnen!")
 
     # Broadcast message
     self.set("bot_msg_broadcast", "Hallöchen! Du kannst die Freischaltung beginnen, indem du 'verifyme' in diesem Channel schreibst.")
