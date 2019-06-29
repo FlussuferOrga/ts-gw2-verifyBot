@@ -2,6 +2,7 @@
 ## BOT Messages
 #######################################
 import TS3Auth
+import re
 
 class Locale(object):
   def __init__(self, fallback = None):
@@ -24,17 +25,26 @@ class Locale(object):
     try:
       tpl = tpl % args
     except TypeError:
-      TS3Auth.log("Could not insert all %d arguments into the string with key '%s' of locale %d. I will not insert any arguments at all." % (len(args), key, self.__class__.__name__))
+      TS3Auth.log("Could not insert all %d arguments into the string with key '%s' of locale %s. I will not insert any arguments at all." % (len(args), key, self.__class__.__name__))
     return tpl
 
   def set(self, key, value):
     self._values[key] = value
 
+class Multi(Locale):
+  def __init__(self, locales, glue = "\n\n-------------------------------------\n\n"):
+    super(Multi, self).__init__()
+    self._locales = locales
+    self._glue = glue
+
+  def get(self, key, args = ()):
+    return self._glue.join([l.get(key, args) for l in self._locales])
+
 class English(Locale):
   def __init__(self):
       super(English, self).__init__()
       self.set("bot_msg_example", "\n\nExample:\n\t\t7895D172-4991-9546-CB5B-78B015B0D8A72BC0E007-4FAF-48C3-9BF1-DA1OAD241266")
-      self.set("bot_msg_note", "\n\nNOTE: Guild Wars 2 API keys can be created/deleted via ArenaNet site 'account.arena.net/applications'.")
+      self.set("bot_msg_note", "\n\nNOTE: Guild Wars 2 API keys can be created/deleted via ArenaNet site [URL]account.arena.net/applications[/URL].")
       self.set("bot_msg_verify", "Hello there! I believe you requested verification?\n\nIf so please reply back to THIS PRIVATE MESSAGE with your API key."+self.get("bot_msg_example")+self.get("bot_msg_note"))
       
       # Banner that we send to all users upon initialization
@@ -59,7 +69,7 @@ class English(Locale):
       self.set("bot_msg_sguild_nv", "I'm sorry, I can't help you set guild tags unless you are authenticated. Please verify first by replying to me with your API key."+self.get("bot_msg_example")+self.get("bot_msg_note"))
 
       #Message sent to someone who is verified and asks to set guild tags.
-      self.set("bot_msg_sguild", "Let's get to work! First, I need your API key (we don't store your API key in the backend). Reply back with your API key:"+self.get("bot_msg_example")+self.get("bot_msg_note"))
+      self.set("bot_msg_sguild", "Let's get to work! First, I need your API key. Reply back with your API key:"+self.get("bot_msg_example")+self.get("bot_msg_note"))
 
       #Message sent to someone who is not verified and asks to set guild tags via private message.
       self.set("bot_msg_gld_needs_auth", "Where you trying to change your guild tags? If so, please be aware you have not been verified yet! Read below to verify."+self.get("bot_msg_example"))
@@ -74,7 +84,7 @@ class German(Locale):
   def __init__(self):
     super(German, self).__init__(English())
     self.set("bot_msg_example", "\n\nBeispiel:\n\t\t7895D172-4991-9546-CB5B-78B015B0D8A72BC0E007-4FAF-48C3-9BF1-DA1OAD241266")
-    self.set("bot_msg_note", "\n\nINFO: Guild Wars 2 API keys können über die ArenaNet-Seite 'account.arena.net/applications' erstellt/gelöscht werden.")
+    self.set("bot_msg_note", "\n\nINFO: Guild Wars 2 API keys können über die ArenaNet-Seite [URL]account.arena.net/applications[/URL] erstellt/gelöscht werden.")
     self.set("bot_msg_verify", "Hallöchen! Möchtest du dich registrieren?\n\nFalls ja, antworte bitte per PRIVATER NACHRICHT mit deinem API-Key."+self.get("bot_msg_example")+self.get("bot_msg_note"))
 
     # Banner that we send to all users upon initialization
@@ -99,7 +109,7 @@ class German(Locale):
     self.set("bot_msg_sguild_nv", "Tut mir leid, ich kann dir erst dabei helfen, ein Gildentag zu setzen, sobald du freigeschaltet bist. Bitte schalte dich frei, indem du mir mit einem API-Schlüssel antwortest."+self.get("bot_msg_example")+self.get("bot_msg_note"))
 
     #Message sent to someone who is verified and asks to set guild tags.
-    self.set("bot_msg_sguild", "Lass uns anfangen! Zuerst brauche ich deinen API-Schlüssel (wir speichern keine Schlüssel). Antworte mir mit deinem API-Schlüssel:"+self.get("bot_msg_example")+self.get("bot_msg_note"))
+    self.set("bot_msg_sguild", "Lass uns anfangen! Zuerst brauche ich deinen API-Schlüssel. Antworte mir mit deinem API-Schlüssel:"+self.get("bot_msg_example")+self.get("bot_msg_note"))
 
     #Message sent to someone who is not verified and asks to set guild tags via private message.
     self.set("bot_msg_gld_needs_auth", "Wolltest du dein Gildentag ändern? Falls ja, beachte, dass du noch nicht freigeschaltet bist! Lies weiter, um dich freizuschalten."+self.get("bot_msg_example"))
@@ -113,9 +123,12 @@ class German(Locale):
 
 def getLocale(locale):
   locale = locale or "" # make sure upper() doesn't fail on empty arguments
-  locale = locale.upper()
+  locale = locale.upper() 
+  locales = locale.split("+")
 
-  if locale == "DE":
+  if len(locales) > 1:
+    return Multi([getLocale(l) for l in locales])
+  elif locale == "DE":
     return German()
   elif locale == "EN":
     return English()

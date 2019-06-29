@@ -67,7 +67,8 @@ client_restriction_limit=2
 # Set to 0 to disable broadcasting
 broadcast_message_timer=0
 
-# The language in which the bot talks to the users. Currently, only EN and DE are supported
+# The language in which the bot talks to the users. Currently, only EN and DE are supported.
+# Multiple locales can be separated with a + to send messages in multiple languages, separated by a newline, eg DE+EN.
 locale=EN
 
 # Whether a user should lose all groups when his API key is no longer accepted.
