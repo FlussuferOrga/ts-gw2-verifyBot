@@ -13,6 +13,8 @@ from bot_messages import * #Import all Static messages the BOT may need
 from threading import Thread
 import sys
 import ipc
+import traceback
+
 
 #######################################
 #### Load Configs
@@ -322,7 +324,7 @@ class Bot:
 
                                 #Add user to database so we can query their API key over time to ensure they are still on our server
                                 self.addUserToDB(rec_from_uid,auth.name,uapi,today_date,today_date)
-                                print ("Added user to DB with ID %s" %rec_from_uid)
+                                TS3Auth.log("Added user to DB with ID %s" %rec_from_uid)
 
                                 #notify user they are verified
                                 self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_success"))
@@ -344,6 +346,7 @@ class Bot:
         except Exception as e:
             TS3Auth.log('BOT Event: Something went wrong during message received from teamspeak server. Likely bad user command/message.')
             TS3Auth.log(e)
+            TS3Auth.log(traceback.format_exc())
         return None
 
 #######################################

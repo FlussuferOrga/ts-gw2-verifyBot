@@ -2,6 +2,7 @@ import gw2api.v2
 from datetime import datetime
 import configparser
 import ast
+import sys
 
 auth_configs=configparser.ConfigParser()
 auth_configs.read('bot.conf')
@@ -25,6 +26,7 @@ h_char_chk = '[CharacterCheck]'
 def log(msg,silent=False):
     if not silent:
         print (msg)
+        sys.stdout.flush()
     with open(log_file,"a") as logger:
         new_log = "%s %s\n" %(str(datetime.now()),msg)
         logger.write(new_log)

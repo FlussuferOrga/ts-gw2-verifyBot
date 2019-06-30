@@ -1,6 +1,7 @@
 import socket
 import json
 import threading
+from TS3Auth import log
 
 class Server(object):
     '''
@@ -26,10 +27,10 @@ class Server(object):
         try:
             client.send(json.dumps(message).encode("utf-8"))
         except BrokenPipeError:
-            print("Broken pipe for client %s:%s. Cleaning up connection." % (addr[0],str(addr[1])))
+            log("Broken pipe for client %s:%s. Cleaning up connection." % (addr[0],str(addr[1])))
             return None
         except Exception as ex:
-            print("Unexpected error while trying to broadcast to client %s:%s: %s" % (addr[0],str(addr[1]),str(ex)))
+            log("Unexpected error while trying to broadcast to client %s:%s: %s" % (addr[0],str(addr[1]),str(ex)))
         return cladr
 
     def broadcast(self, message):
