@@ -54,7 +54,7 @@ class English(Locale):
       self.set("bot_msg_broadcast", "Hello there! You can begin verification by typing 'verifyme' in this channel.")
       
       #Message sent for sucesful verification
-      self.set("bot_msg_success", "Authentication was succesful! Thank you fellow Adventurer. Have fun \(^.^)/")
+      self.set("bot_msg_success", "Authentication was succesful! Thank you fellow adventurer. Have fun \(^.^)/")
       
       #Message sent for failed verification
       self.set("bot_msg_fail",  "Unfortuntely your authentication failed. Ask the Teamspeak admin to review the logs.\n~ Likely a bad API key or incorrect API settings. (API Key needs access to 'account' and 'character' )"+self.get("bot_msg_note"))
