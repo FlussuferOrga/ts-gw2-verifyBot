@@ -108,7 +108,6 @@ def commandCheck(command_string):
 
 bot_loop_forever=True
 TS3Auth.log("Initializing script....")
-
 while bot_loop_forever:
     try:    
         TS3Auth.log("Connecting to Teamspeak server...")
@@ -123,6 +122,7 @@ while bot_loop_forever:
             BOT=Bot(db_file_name,ts3conn)
 
             ipcthread = Thread(target = IPCS.run)
+            ipcthread.daemon = True
             ipcthread.start()
             TS3Auth.log ("BOT loaded into server (%s) as %s (%s). Nickname '%s'" %(server_id,BOT.name,BOT.client_id,BOT.nickname))
 
@@ -229,8 +229,10 @@ while bot_loop_forever:
         time.sleep(bot_sleep_conn_lost)
 
     except (ConnectionRefusedError, ts3.query.TS3TransportError):
-            TS3Auth.log("Unable to reach teamspeak server..trying again in %s seconds..." %bot_sleep_conn_lost)
-            time.sleep(bot_sleep_conn_lost)
-
+        TS3Auth.log("Unable to reach teamspeak server..trying again in %s seconds..." %bot_sleep_conn_lost)
+        time.sleep(bot_sleep_conn_lost)
+    except (KeyboardInterrupt, SystemExit):
+        bot_loop_forever = False
+        sys.exit(0)
 
 #######################################
