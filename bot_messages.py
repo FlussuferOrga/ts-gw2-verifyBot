@@ -54,7 +54,7 @@ class English(Locale):
       self.set("bot_msg_broadcast", "Hello there! You can begin verification by typing 'verifyme' in this channel.")
       
       #Message sent for sucesful verification
-      self.set("bot_msg_success", "Authentication was succesful! Thank you fellow adventurer. Have fun \(^.^)/")
+      self.set("bot_msg_success", "Authentication was succesful! Thank you fellow adventurer. Please give our rules a read and have fun \(^.^)/")
       
       #Message sent for failed verification
       self.set("bot_msg_fail",  "Unfortuntely your authentication failed. Ask the Teamspeak admin to review the logs.\n~ Likely a bad API key or incorrect API settings. (API Key needs access to 'account' and 'character' )"+self.get("bot_msg_note"))
@@ -94,7 +94,7 @@ class German(Locale):
     self.set("bot_msg_broadcast", "Hallöchen! Du kannst die Freischaltung beginnen, indem du 'verifyme' in diesem Channel schreibst.")
     
     #Message sent for sucesful verification
-    self.set("bot_msg_success", "Freischaltung erfolgreich! Danke dir, Abenteurer. Viel Spaß \(^.^)/")
+    self.set("bot_msg_success", "Freischaltung erfolgreich! Danke dir, Abenteurer. Bitte lies dir unsere Regeln durch und dann viel Spaß \(^.^)/")
     
     #Message sent for failed verification
     self.set("bot_msg_fail",  "Leider hat die Freischaltung nicht funktioniert. Bitte einen Teamspeak Administrator die Logs zu prüfen.\n~ Wahrscheinlich ein ungültiger API-Schlüssel oder falsche API-Einstellungen. (Der API-Schlüssel braucht die Berechtigungen 'account' und 'character' )"+self.get("bot_msg_note"))
