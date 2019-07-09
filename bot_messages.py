@@ -80,6 +80,18 @@ class English(Locale):
       #Default message we send to Private messages that didn't match a command
       self.set("bot_msg_rcv_default", "Hrm...So I get that your saying something but I don't understand what. Are you trying to get verified? If so please provide your API key in the format:"+self.get("bot_msg_example")+self.get("bot_msg_note"))
 
+      # User successfully hid a guild
+      self.set("bot_hide_guild_success", "Okay, I will not give you this tag again upon revalidation. You can [b]unhide[/b] the tag at any time.")
+
+      # User passed an invalid guild
+      self.set("bot_hide_guild_unknown", "Sorry, there seems to be no such guild or you have already hidden it. Please make sure you use the exact spelling that is used for the TS group.")
+
+      # User successfully hid a guild
+      self.set("bot_unhide_guild_success", "Okay, you will receive this group with the next revalidation, if you are entitled to get it.")
+
+      # User passed an invalid guild
+      self.set("bot_unhide_guild_unknown", "Sorry, there seems to be no such guild-group or you have not hidden it. Please make sure you use the exact spelling that is used for the TS group.")
+
 class German(Locale):
   def __init__(self):
     super(German, self).__init__(English())
@@ -120,6 +132,17 @@ class German(Locale):
     #Default message we send to Private messages that didn't match a command
     self.set("bot_msg_rcv_default", "Hm... ich merke, dass du etwas von mir willst, aber ich verstehe dich nicht. Möchtest du dich freischalten? Falls ja, bitte gib deinen API-Schlüssel in folgendem Format an:"+self.get("bot_msg_example")+self.get("bot_msg_note"))
 
+    # User successfully hid a guild
+    self.set("bot_hide_guild_success", "Okay, ich werde dir diese Gruppe bei der Revalidierung nichtmehr geben. Du kannst die Gruppe jederzeit wieder [b]unhide[/b]n.")
+
+    # User passed an invalid guild
+    self.set("bot_hide_guild_unknown", "Tut mir Leid, eine solche Gilde scheint es nicht zu geben oder du hast sie bereits versteckt. Bitte stelle sicher, dass du die exakte Schreibweise der Gildengruppe hier im Teamspeak verwendest.")
+
+    # User successfully hid a guild
+    self.set("bot_unhide_guild_success", "Okay, du wirst die Gruppe bei der nächsten Revalidierung wieder erhalten, wenn du dazu berechtigt bist.")
+
+    # User passed an invalid guild
+    self.set("bot_unhide_guild_unknown", "Tut mir Leid, eine solche Gilde scheint es nicht zu geben or du hattest die Gruppe nicht versteckt. Bitte stelle sicher, dass du die exakte Schreibweise der Gildengruppe hier im Teamspeak verwendest.")
 
 def getLocale(locale):
   locale = locale or "" # make sure upper() doesn't fail on empty arguments

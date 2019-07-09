@@ -190,6 +190,16 @@ class Bot:
                             ts_group text UNIQUE)''')
             self.db_conn.commit()
 
+            # GUILD IGNORES
+            self.db_cursor.execute('''CREATE TABLE guild_ignores(
+                            guild_ignore_id integer primary key autoincrement,
+                            guild_id integer,
+                            ts_db_id text,
+                            ts_name text,
+                            FOREIGN KEY(guild_id) REFERENCES guilds(guild_id),
+                            UNIQUE(guild_id, ts_db_id))''')
+            self.db_conn.commit()
+
     def TsClientLimitReached(self,gw_acct_name):
         current_entries = self.db_cursor.execute("SELECT * FROM users WHERE account_name=?",  (gw_acct_name, )).fetchall()
         return len(current_entries) >= client_restriction_limit
@@ -212,9 +222,9 @@ class Bot:
         self.db_conn.commit()
 
     def updateGuildTags(self, client_db_id, auth):
+        uid = self.getTsUniqueID(client_db_id)
         ts_groups = {sg.get("name"):sg.get("sgid") for sg in self.ts_connection.query("servergrouplist").all()}
         ingame_member_of = set(auth.guild_names)
-
         # names of all groups the user is in, not just guild ones
         current_group_names = [g.get("name") for g in self.ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all()] 
         # data of all guild groups the user is in
@@ -222,10 +232,14 @@ class Bot:
         # sanitisation is restricted to replacing single and double quotes. This should not be that much of a problem, since
         # the input for the parameters here are the names of our own server groups on our TS server.   
         current_guild_groups = self.db_cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group IN (%s)" % (param,)).fetchall()
-
+        # groups the user doesn't want to wear
+        hidden_groups = set([g[0] for g in self.db_cursor.execute("SELECT g.ts_group FROM guild_ignores AS gi JOIN guilds AS g ON gi.guild_id = g.guild_id  WHERE ts_db_id = ?", (uid,))])
         # REMOVE STALE GROUPS
         for ggroup, gname in current_guild_groups:
-            if not gname in ingame_member_of:
+            if ggroup in hidden_groups:
+                TS3Auth.log("Player %s chose to hide group '%s', which is now removed." % (auth.name, ggroup))
+                self.ts_connection.exec_("servergroupdelclient", sgid=ts_groups[ggroup], cldbid=client_db_id)
+            elif not gname in ingame_member_of:
                 if ggroup not in ts_groups:
                     TS3Auth.log("Player %s should be removed from the TS group '%s' because they are not a member of guild '%s'. But no matching group exists. You should remove the entry for this guild from the db or check the spelling of the TS group in the DB. Skipping." % (ggroup, auth.name, gname))
                 else:
@@ -238,11 +252,14 @@ class Bot:
             if ts_group:
                 ts_group = ts_group[0] # first and only column, if a row exists
                 if ts_group not in current_group_names:
-                    if ts_group not in ts_groups:
-                        TS3Auth.log("Player %s should be assigned the TS group '%s' because they are member of guild '%s'. But the group does not exist. You should remove the entry for this guild from the db or create the group. Skipping." % (auth.name, ts_group, g))
+                    if ts_group in hidden_groups:
+                        TS3Auth.log("Player %s is entitled to TS group '%s', but chose to hide it. Skipping." % (auth.name, ts_group))
                     else:
-                        TS3Auth.log("Player %s is member of guild '%s' and will be assigned the TS group '%s'." % (auth.name, g, ts_group))
-                        self.ts_connection.exec_("servergroupaddclient", sgid = ts_groups[ts_group], cldbid=client_db_id)
+                        if ts_group not in ts_groups:
+                            TS3Auth.log("Player %s should be assigned the TS group '%s' because they are member of guild '%s'. But the group does not exist. You should remove the entry for this guild from the db or create the group. Skipping." % (auth.name, ts_group, g))
+                        else:
+                            TS3Auth.log("Player %s is member of guild '%s' and will be assigned the TS group '%s'." % (auth.name, g, ts_group))
+                            self.ts_connection.exec_("servergroupaddclient", sgid = ts_groups[ts_group], cldbid=client_db_id)
 
     def auditUsers(self):
         self.c_audit_date=datetime.date.today() #Update current date everytime run
@@ -266,6 +283,7 @@ class Bot:
                 auth=TS3Auth.auth_request(audit_api_key,audit_account_name)
                 if auth.success:
                     TS3Auth.log("User %s is still on %s. Succesful audit!" %(audit_account_name,auth.world.get('name')))
+                    self.getTsDatabaseID(audit_ts_id)
                     self.updateGuildTags(self.getTsDatabaseID(audit_ts_id), auth)
                     self.db_cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", (self.c_audit_date,audit_ts_id,))
                     self.db_conn.commit()
@@ -304,7 +322,7 @@ class Bot:
         action=(None,None)
         for allowed_cmd in cmd_list:
             if re.match('(^%s)\s*' % (allowed_cmd,) ,command_string):
-                toks = allowed_cmd.split() # no argument for split() splits on arbitrary whitespace
+                toks = command_string.split() # no argument for split() splits on arbitrary whitespace
                 action = (toks[0], toks[1:])
         return action
 
@@ -331,13 +349,32 @@ class Bot:
         try:
             # Type 2 means it was channel text
             if rec_type == '2':
-                return # channel commands are disabled for now
                 cmd, args = self.commandCheck(raw_cmd) #sanitize the commands but also restricts commands to a list of known allowed commands
-                if cmd == 'join':
-                    pass
-                elif cmd == 'leave':
-                    pass
+                if cmd == 'hideguild':
+                    TS3Auth.log("User '%s' wants to hide guild '%s'." % (rec_from_name, args[0]))
+                    try:
+                        self.db_cursor.execute("INSERT INTO guild_ignores(guild_id, ts_db_id, ts_name) VALUES((SELECT guild_id FROM guilds WHERE ts_group = ?), ?,?)", (args[0], rec_from_uid, rec_from_name))
+                        self.db_conn.commit()
+                        TS3Auth.log("Success!")
+                        self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_hide_guild_success"))
+                    except sqlite3.IntegrityError:
+                        self.db_conn.rollback()
+                        TS3Auth.log("Failed. The group probably doesn't exist or the user is already part of the group.")
+                        self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_hide_guild_unknown"))
+
+                elif cmd == 'unhideguild':
+                    TS3Auth.log("User '%s' wants to unhide guild '%s'." % (rec_from_name, args[0]))
+                    self.db_cursor.execute("DELETE FROM guild_ignores WHERE guild_id = (SELECT guild_id FROM guilds WHERE ts_group = ? AND ts_db_id = ?)", (args[0], rec_from_uid))
+                    changes = self.db_cursor.execute("SELECT changes()").fetchone()[0];
+                    self.db_conn.commit()
+                    if changes > 0:
+                        TS3Auth.log("Success!")
+                        self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_unhide_guild_success"))
+                    else:
+                        TS3Auth.log("Failed. Either the guild is unknown or the user had not hidden the guild anyway.")
+                        self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_unhide_guild_unknown"))
                 elif cmd == 'verifyme':
+                    return # command disabled for now
                     if self.clientNeedsVerify(rec_from_uid):
                         TS3Auth.log("Verify Request Recieved from user '%s'. Sending PM now...\n        ...waiting for user response." %rec_from_name)
                         self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_verify"))
