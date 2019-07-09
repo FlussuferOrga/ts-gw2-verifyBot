@@ -25,6 +25,7 @@ current_version='1.2'
 configs=configparser.ConfigParser()
 configs.read('bot.conf')
 
+cmd_list = ast.literal_eval(configs.get('bot settings','cmd_list'))
 
 # Teamspeak Connection Settings
 host = configs.get('teamspeak connection settings','host')
@@ -175,12 +176,18 @@ class Bot:
             self.db_conn = sqlite3.connect(self.db_name,check_same_thread=False,detect_types=sqlite3.PARSE_DECLTYPES)
             self.db_cursor = self.db_conn.cursor()
             TS3Auth.log("No User Database found...created new database!")
-            self.db_cursor.execute('''CREATE TABLE users
-                    (ts_db_id text primary key, account_name text, api_key text, created_date date, last_audit_date date)''')
-            self.db_cursor.execute('''CREATE TABLE bot_info
-                    (version text, last_succesful_audit date)''')
+            # USERS
+            self.db_cursor.execute('''CREATE TABLE users(ts_db_id text primary key, account_name text, api_key text, created_date date, last_audit_date date)''')
+            # BOT INFO
+            self.db_cursor.execute('''CREATE TABLE bot_info(version text, last_succesful_audit date)''')
             self.db_conn.commit()
             self.db_cursor.execute('INSERT INTO bot_info (version, last_succesful_audit) VALUES (?,?)', (current_version, datetime.date.today(), ))
+            self.db_conn.commit()
+            # GUILD INFO
+            self.db_cursor.execute('''CREATE TABLE guilds(
+                            guild_id integer primary key autoincrement, 
+                            guild_name text UNIQUE,
+                            ts_group text UNIQUE)''')
             self.db_conn.commit()
 
     def TsClientLimitReached(self,gw_acct_name):
@@ -204,6 +211,39 @@ class Bot:
         self.db_cursor.execute("DELETE FROM users WHERE ts_db_id=?", (client_db_id,))
         self.db_conn.commit()
 
+    def updateGuildTags(self, client_db_id, auth):
+        ts_groups = {sg.get("name"):sg.get("sgid") for sg in self.ts_connection.query("servergrouplist").all()}
+        ingame_member_of = set(auth.guild_names)
+
+        # names of all groups the user is in, not just guild ones
+        current_group_names = [g.get("name") for g in self.ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all()] 
+        # data of all guild groups the user is in
+        param = ",".join(["'%s'" % (cgn.replace('"', '\\"').replace("'", "\\'"),) for cgn in current_group_names])
+        # sanitisation is restricted to replacing single and double quotes. This should not be that much of a problem, since
+        # the input for the parameters here are the names of our own server groups on our TS server.   
+        current_guild_groups = self.db_cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group IN (%s)" % (param,)).fetchall()
+
+        # REMOVE STALE GROUPS
+        for ggroup, gname in current_guild_groups:
+            if not gname in ingame_member_of:
+                if ggroup not in ts_groups:
+                    TS3Auth.log("Player %s should be removed from the TS group '%s' because they are not a member of guild '%s'. But no matching group exists. You should remove the entry for this guild from the db or check the spelling of the TS group in the DB. Skipping." % (ggroup, auth.name, gname))
+                else:
+                    TS3Auth.log("Player %s is no longer part of the guild '%s'. Removing attached group '%s'." % (auth.name, gname, ggroup))
+                    self.ts_connection.exec_("servergroupdelclient", sgid=ts_groups[ggroup], cldbid=client_db_id)
+
+        # ADD DUE GROUPS
+        for g in ingame_member_of:
+            ts_group = self.db_cursor.execute("SELECT ts_group FROM guilds WHERE guild_name = ?", (g,)).fetchone()
+            if ts_group:
+                ts_group = ts_group[0] # first and only column, if a row exists
+                if ts_group not in current_group_names:
+                    if ts_group not in ts_groups:
+                        TS3Auth.log("Player %s should be assigned the TS group '%s' because they are member of guild '%s'. But the group does not exist. You should remove the entry for this guild from the db or create the group. Skipping." % (auth.name, ts_group, g))
+                    else:
+                        TS3Auth.log("Player %s is member of guild '%s' and will be assigned the TS group '%s'." % (auth.name, g, ts_group))
+                        self.ts_connection.exec_("servergroupaddclient", sgid = ts_groups[ts_group], cldbid=client_db_id)
+
     def auditUsers(self):
         self.c_audit_date=datetime.date.today() #Update current date everytime run
         self.db_audit_list=self.db_cursor.execute('SELECT * FROM users').fetchall()
@@ -222,10 +262,11 @@ class Bot:
 
             #compare audit date
             if self.c_audit_date >= audit_last_audit_date + datetime.timedelta(days=audit_period):
-                TS3Auth.log ("User %s is due for audting!" %audit_account_name)
+                TS3Auth.log ("User %s is due for auditing!" %audit_account_name)
                 auth=TS3Auth.auth_request(audit_api_key,audit_account_name)
                 if auth.success:
                     TS3Auth.log("User %s is still on %s. Succesful audit!" %(audit_account_name,auth.world.get('name')))
+                    self.updateGuildTags(self.getTsDatabaseID(audit_ts_id), auth)
                     self.db_cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", (self.c_audit_date,audit_ts_id,))
                     self.db_conn.commit()
                 else:
@@ -259,6 +300,14 @@ class Bot:
         if self.clientNeedsVerify(raw_cluid):
             self.ts_connection.exec_("sendtextmessage", targetmode=1, target=raw_clid, msg=locale.get("bot_msg_verify"))
 
+    def commandCheck(self, command_string):
+        action=(None,None)
+        for allowed_cmd in cmd_list:
+            if re.match('(^%s)\s*' % (allowed_cmd,) ,command_string):
+                toks = allowed_cmd.split() # no argument for split() splits on arbitrary whitespace
+                action = (toks[0], toks[1:])
+        return action
+
     # Handler that is used every time an event (message) is received from teamspeak server
     def message_event_handler(self, event):
         """
@@ -282,9 +331,13 @@ class Bot:
         try:
             # Type 2 means it was channel text
             if rec_type == '2':
-                cmd=commandCheck(raw_cmd) #sanitize the commands but also restricts commands to a list of known allowed commands
-
-                if cmd == 'verifyme':
+                return # channel commands are disabled for now
+                cmd, args = self.commandCheck(raw_cmd) #sanitize the commands but also restricts commands to a list of known allowed commands
+                if cmd == 'join':
+                    pass
+                elif cmd == 'leave':
+                    pass
+                elif cmd == 'verifyme':
                     if self.clientNeedsVerify(rec_from_uid):
                         TS3Auth.log("Verify Request Recieved from user '%s'. Sending PM now...\n        ...waiting for user response." %rec_from_name)
                         self.ts_connection.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=locale.get("bot_msg_verify"))
@@ -324,6 +377,7 @@ class Bot:
 
                                 #Add user to database so we can query their API key over time to ensure they are still on our server
                                 self.addUserToDB(rec_from_uid,auth.name,uapi,today_date,today_date)
+                                self.updateGuildTags(rec_from_uid, auth)
                                 TS3Auth.log("Added user to DB with ID %s" %rec_from_uid)
 
                                 #notify user they are verified

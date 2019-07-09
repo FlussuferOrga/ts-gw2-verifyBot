@@ -90,8 +90,11 @@ class auth_request:
 
         # Players Guild Tags (Seems to order it by oldest guild first)
         self.guild_tags = []
+        self.guild_names = []
         for guild_id in self.guilds:
-            self.guild_tags.append(gw2api.guild_details(guild_id).get('tag'))
+            ginfo = gw2api.guild_details(guild_id)
+            self.guild_tags.append(ginfo.get('tag'))
+            self.guild_names.append(ginfo.get('guild_name'))
 
     def authCheck(self):
         log("%s %s Running auth check for %s" %(h_hdr,h_auth,self.name))

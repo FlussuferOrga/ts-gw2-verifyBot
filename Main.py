@@ -87,22 +87,6 @@ if bot_sleep_idle > 300:
     TS3Auth.log("WARNING: setting bot_sleep_idle to a value higher than 300 seconds could result in timeouts!")
 
 #######################################
-
-#######################################
-## Functions
-#######################################
-
-# Restricts commands for the channel messages (can add custom ones). Also add relevant code to 'rec_type 2' in my_event_handler.
-def commandCheck(command_string):
-    action=0
-    for allowed_cmd in cmd_list:
-        if re.match('(^%s)\s*' %allowed_cmd,command_string):
-            action=allowed_cmd
-    return action
-
-#######################################
-
-#######################################
 # Begins the connect to Teamspeak
 #######################################
 
