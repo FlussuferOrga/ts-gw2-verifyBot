@@ -457,29 +457,46 @@ class Ticker(object):
 #######################################
 
 class CommanderChecker(Ticker):
-    def __init__(self, ts3bot, ipcserver, commander_group_name, interval = 60):
+    def __init__(self, ts3bot, ipcserver, commander_group_names, interval = 60):
         super(CommanderChecker, self).__init__(ts3bot, interval)
-        self.commander_group_name = commander_group_name
+        self.commander_group_names = commander_group_names
         self.ipcserver = ipcserver
 
-        cgroups = list(filter(lambda g: g.get("name") == commander_group_name, self.ts3bot.ts_connection.query("channelgrouplist").all()))
+        cgroups = list(filter(lambda g: g.get("name") in commander_group_names, self.ts3bot.ts_connection.query("channelgrouplist").all()))
         if len(cgroups) < 1:
-            TS3Auth.log("Could not find a group called %s to determine commanders by. Disabling this feature." % (commander_group_name,))
-            self.commander_group = -1
+            TS3Auth.log("Could not find any group of %s to determine commanders by. Disabling this feature." % (str(commander_group_names),))
+            self.commander_groups = []
             return
-        elif len(cgroups) > 1:
-            TS3Auth.log("Found more than one group called %s, which is very weird. Using the first one, but preceed with caution." % (commander_group_name,))
 
-        self.commander_group = cgroups[0].get("cgid")
+        self.commander_groups = [c.get("cgid") for c in cgroups]
 
     def execute(self):
+        if not self.commander_groups:
+            return # disabled if no groups were found
+
         active_commanders = []
         try:
-            active_commanders_entries = [self.ts3bot.getUserDBEntry(self.ts3bot.getTsUniqueID(c.get("cldbid"))) 
-                                           for c in self.ts3bot.ts_connection.query("channelgroupclientlist", cgid=self.commander_group).all()]
-            active_commanders = [c["account_name"] for c in active_commanders_entries if c is not None]
+            command = self.ts3bot.ts_connection.query("channelgroupclientlist")
+            for cgid in self.commander_groups:
+                command.pipe(cgid=cgid)
+            active_commanders_entries = [(c, self.ts3bot.getUserDBEntry(self.ts3bot.getTsUniqueID(c.get("cldbid")))) for c in command.all()]
+
+            active_commanders = []
+            for ts_entry, db_entry in active_commanders_entries:
+                if db_entry is not None: # or else the user with the commander group was not registered and therefore not in the DB
+                    try:
+                        clid = self.ts3bot.getTsUniqueID(ts_entry.get("cldbid"))
+                        ac = {}
+                        ac["account_name"] = db_entry["account_name"]
+                        ac["ts_cluid"] = db_entry["ts_db_id"]
+                        ac["ts_display_name"] = self.ts3bot.ts_connection.query("clientgetnamefromuid", cluid=db_entry["ts_db_id"]).first().get("name") # no, there is probably no easier way to do this. I checked.
+                        ac["ts_channel_name"] = self.ts3bot.ts_connection.query("channelinfo", cid=ts_entry.get("cid")).first().get("channel_name")
+                        active_commanders.append(ac)
+                    except ts3.query.TS3QueryError as qe:
+                        TS3Auth.log("Could not determine information for commanding user with ID %s. Skipping." % (str(ts_entry),))
         except ts3.query.TS3QueryError:
             pass # empty result set, no users with that group
+        # print(str({"commanders": active_commanders}))   
         self.ipcserver.broadcast({"commanders": active_commanders})
 
 #######################################

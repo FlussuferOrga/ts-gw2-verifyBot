@@ -53,7 +53,7 @@ timer_msg_broadcast = int(configs.get('bot settings','broadcast_message_timer'))
 
 ipc_port = int(configs.get('ipc settings','ipc_port'))
 
-poll_group_name = configs.get('ipc settings','poll_group_name')
+poll_group_names = ast.literal_eval(configs.get('ipc settings','poll_group_names'))
 poll_group_poll_delay = int(configs.get('ipc settings','poll_group_poll_delay'))
 
 purge_completely = False
@@ -179,7 +179,7 @@ while bot_loop_forever:
             #Since v2 of the ts3 library, keepalive must be sent manually to not screw with threads
             schedule.every(keepalive_interval).seconds.do(ts3conn.send_keepalive)
 
-            CommanderChecker(BOT, IPCS, poll_group_name, poll_group_poll_delay)
+            commander_checker = CommanderChecker(BOT, IPCS, poll_group_names, poll_group_poll_delay)
 
             #Set schedule to advertise broadcast message in channel
             if timer_msg_broadcast > 0:
