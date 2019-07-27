@@ -143,6 +143,7 @@ class Bot:
                 TS3Auth.log("Unable to remove client from '%s' group. Does the group exist and are they member of the group?" %verified_group)
             #Remove users from all groups, except the whitelisted ones
             if purge_completely:
+                # FIXME: remove channel groups as well
                 assigned_groups = self.ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all()
                 for g in assigned_groups:
                     if g.get("name") not in purge_whitelist:
@@ -456,6 +457,80 @@ class Ticker(object):
 
 #######################################
 
+class Channel(object):
+    def __init__(self, ts_conn, channel_id):
+        self.ts_conn = ts_conn
+        self.channel_id = channel_id
+
+#######################################
+
+class User(object):
+    '''
+    Class that interfaces the Teamspeak-API with user-specific calls more convenient. 
+    Since calls to the API are penalised, the class also tries to minimise those calls
+    by only resolving properties when they are actually needed and then caching them (if sensible).
+    '''
+    def __init__(self, ts_conn, unique_id = None, ts_db_id = None, client_id = None):
+        self.ts_conn = ts_conn
+        self._unique_id = unique_id
+        self._ts_db_id = ts_db_id
+        self._client_id = client_id
+
+        if all(x is None for x in [unique_id, ts_db_id, client_id]):
+            raise Error("At least one ID must be non-null")      
+
+    @property
+    def current_channel(self):
+        entry = next((c for c in self.ts_conn.query("clientlist").all() if c.get("clid") == self.client_id), None)
+        if entry:
+            self._ts_db_id = entry.get("client_database_id") # since we are already retrieving this information...
+        return Channel(self.ts_conn, entry.get("cid")) if entry else None
+
+    @property
+    def name(self):
+        return self.ts_conn.query("clientgetids", cluid=self.unique_id).first().get("name")  
+
+    @property
+    def unique_id(self):
+        if self._unique_id is None:
+            if self._ts_db_id is not None:
+                self._unique_id = self.ts_conn.query("clientgetnamefromdbid", cldbid=self._ts_db_id).first().get("cluid")
+            elif self._client_id is not None:
+                ids = self.ts_conn.query("clientinfo", clid=self._client_id).first()
+                self._unique_id = ids.get("client_unique_identifier")
+                self._ts_db_id = ids.get("client_databased_id") # not required, but since we already queried it...
+            else:
+                raise Error("unique ID can not be retrieved")
+        return self._unique_id
+
+    @property
+    def ts_db_id(self):
+        if self._ts_db_id is None:
+            if self._unique_id is not None:
+                self._ts_db_id = self.ts_conn.query("clientgetdbidfromuid", cluid=self._unique_id).first().get("cldbid")
+            elif self._client_id is not None:
+                ids = self.ts_conn.query("clientinfo", clid=self._client_id).first()
+                self._unique_id = ids.get("client_unique_identifier") # not required, but since we already queried it...
+                self._ts_db_id = ids.get("client_database_id")
+            else:
+                raise Error("TS DB ID can not be retrieved")
+        return self._ts_db_id
+
+    @property
+    def client_id(self):
+        if self._client_id is None:
+            if self._unique_id is not None:
+                # easiest case: unique ID is set
+                self._client_id = self.ts_conn.query("clientgetids", cluid=self._unique_id).first().get("clid")
+            elif self._ts_db_id is not None:
+                self._unique_id = self._unique_id = self.ts_conn.query("clientgetnamefromdbid", cldbid=self._ts_db_id).first().get("cluid")
+                self._client_id = self.ts_conn.query("clientgetids", cluid=self._unique_id).first().get("clid")
+            else:
+                raise Error("Client ID can not be retrieved")
+        return self._client_id  
+
+#######################################
+
 class CommanderChecker(Ticker):
     def __init__(self, ts3bot, ipcserver, commander_group_names, interval = 60):
         super(CommanderChecker, self).__init__(ts3bot, interval)
@@ -484,19 +559,24 @@ class CommanderChecker(Ticker):
             active_commanders = []
             for ts_entry, db_entry in active_commanders_entries:
                 if db_entry is not None: # or else the user with the commander group was not registered and therefore not in the DB
-                    try:
-                        clid = self.ts3bot.getTsUniqueID(ts_entry.get("cldbid"))
-                        ac = {}
-                        ac["account_name"] = db_entry["account_name"]
-                        ac["ts_cluid"] = db_entry["ts_db_id"]
-                        ac["ts_display_name"] = self.ts3bot.ts_connection.query("clientgetnamefromuid", cluid=db_entry["ts_db_id"]).first().get("name") # no, there is probably no easier way to do this. I checked.
-                        ac["ts_channel_name"] = self.ts3bot.ts_connection.query("channelinfo", cid=ts_entry.get("cid")).first().get("channel_name")
-                        active_commanders.append(ac)
-                    except ts3.query.TS3QueryError as qe:
-                        TS3Auth.log("Could not determine information for commanding user with ID %s. Skipping." % (str(ts_entry),))
-        except ts3.query.TS3QueryError:
-            pass # empty result set, no users with that group
-        # print(str({"commanders": active_commanders}))   
+                    u = User(self.ts3bot.ts_connection, ts_db_id = ts_entry.get("cldbid"))
+                    if u.current_channel.channel_id == ts_entry.get("cid"):
+                        # user could have the group in a channel but not be in there atm
+                        try:
+                            ac = {}
+                            ac["account_name"] = db_entry["account_name"]
+                            ac["ts_cluid"] = db_entry["ts_db_id"]
+                            ac["ts_display_name"] = self.ts3bot.ts_connection.query("clientgetnamefromuid", cluid=db_entry["ts_db_id"]).first().get("name") # no, there is probably no easier way to do this. I checked.
+                            ac["ts_channel_name"] = self.ts3bot.ts_connection.query("channelinfo", cid=ts_entry.get("cid")).first().get("channel_name")
+                            active_commanders.append(ac)
+                        except ts3.query.TS3QueryError as qe:
+                            TS3Auth.log("Could not determine information for commanding user with ID %s: '%s'. Skipping." % (str(ts_entry), qe))
+        except ts3.query.TS3QueryError as ts3qe:
+            if ts3qe.resp.error["id"] != 1281:
+                # 1281 is "database empty result set", which is an expected error
+                # if not a single user currently wears a tag.
+                TS3Auth.log("Error while trying to resolve avtive commanders: %s." % (str(ts3qe),))
+        # print({"commanders": active_commanders})
         self.ipcserver.broadcast({"commanders": active_commanders})
 
 #######################################
