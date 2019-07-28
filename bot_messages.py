@@ -45,7 +45,7 @@ class English(Locale):
       super(English, self).__init__()
       self.set("bot_msg_example", "\n\nExample:\n\t\t7895D172-4991-9546-CB5B-78B015B0D8A72BC0E007-4FAF-48C3-9BF1-DA1OAD241266")
       self.set("bot_msg_note", "\n\nNOTE: Guild Wars 2 API keys can be created/deleted via ArenaNet site [URL]account.arena.net/applications[/URL].")
-      self.set("bot_msg_verify", "Hello there! I believe you requested verification?\n\nIf so please reply back to THIS PRIVATE MESSAGE with your API key."+self.get("bot_msg_example")+self.get("bot_msg_note"))
+      self.set("bot_msg_verify", "Hello there! I believe you requested verification?\n\nIf so please reply back to THIS PRIVATE MESSAGE with your API key. Please make sure the key has the permissions [b]account[/b], [b]characters[/b], and [b]guilds[/b]."+self.get("bot_msg_example")+self.get("bot_msg_note"))
       
       # Banner that we send to all users upon initialization
       self.set("bot_msg", "%s is alive once again! If you require verification, please reconnect!")
@@ -97,7 +97,7 @@ class German(Locale):
     super(German, self).__init__(English())
     self.set("bot_msg_example", "\n\nBeispiel:\n\t\t7895D172-4991-9546-CB5B-78B015B0D8A72BC0E007-4FAF-48C3-9BF1-DA1OAD241266")
     self.set("bot_msg_note", "\n\nINFO: Guild Wars 2 API keys können über die ArenaNet-Seite [URL]account.arena.net/applications[/URL] erstellt/gelöscht werden.")
-    self.set("bot_msg_verify", "Hallöchen! Möchtest du dich registrieren?\n\nFalls ja, antworte bitte per PRIVATER NACHRICHT mit deinem API-Key."+self.get("bot_msg_example")+self.get("bot_msg_note"))
+    self.set("bot_msg_verify", "Hallöchen! Möchtest du dich registrieren?\n\nFalls ja, antworte bitte per PRIVATER NACHRICHT mit deinem API-Key. Bitte achte darauf, dass der Key die Berechtigungen [b]account[/b], [b]characters[/b], und [b]guilds[/b] besitzt."+self.get("bot_msg_example")+self.get("bot_msg_note"))
 
     # Banner that we send to all users upon initialization
     self.set("bot_msg", "%s ist wieder da! Falls du eine Freischaltung benötigst, verbinde dich bitte neu!")
