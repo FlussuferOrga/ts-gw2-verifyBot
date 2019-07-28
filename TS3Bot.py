@@ -316,6 +316,7 @@ class Bot:
         if raw_clid == self.client_id:
             return
 
+        print(self.clientNeedsVerify(raw_cluid))
         if self.clientNeedsVerify(raw_cluid):
             self.ts_connection.exec_("sendtextmessage", targetmode=1, target=raw_clid, msg=locale.get("bot_msg_verify"))
 
@@ -572,10 +573,13 @@ class CommanderChecker(Ticker):
                         except ts3.query.TS3QueryError as qe:
                             TS3Auth.log("Could not determine information for commanding user with ID %s: '%s'. Skipping." % (str(ts_entry), qe))
         except ts3.query.TS3QueryError as ts3qe:
-            if ts3qe.resp.error["id"] != 1281:
+            if ts3qe.resp.error["id"] != "1281":
+                print(ts3qe.resp.error["id"])
+                print(type(ts3qe.resp.error["id"]))
+                print(ts3qe.resp.error["id"] == "1281")
                 # 1281 is "database empty result set", which is an expected error
                 # if not a single user currently wears a tag.
-                TS3Auth.log("Error while trying to resolve avtive commanders: %s." % (str(ts3qe),))
+                TS3Auth.log("Error while trying to resolve active commanders: %s." % (str(ts3qe),))
         # print({"commanders": active_commanders})
         self.ipcserver.broadcast({"commanders": active_commanders})
 
