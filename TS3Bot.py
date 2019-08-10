@@ -222,8 +222,10 @@ class Bot:
         self.db_cursor.execute("DELETE FROM users WHERE ts_db_id=?", (client_db_id,))
         self.db_conn.commit()
 
-    def updateGuildTags(self, client_db_id, auth):
-        uid = self.getTsUniqueID(client_db_id)
+    #def updateGuildTags(self, client_db_id, auth):
+    def updateGuildTags(self, user, auth):
+        uid = user.unique_id # self.getTsUniqueID(client_db_id)
+        client_db_id = user.ts_db_id
         ts_groups = {sg.get("name"):sg.get("sgid") for sg in self.ts_connection.query("servergrouplist").all()}
         ingame_member_of = set(auth.guild_names)
         # names of all groups the user is in, not just guild ones
@@ -284,8 +286,9 @@ class Bot:
                 auth=TS3Auth.auth_request(audit_api_key,audit_account_name)
                 if auth.success:
                     TS3Auth.log("User %s is still on %s. Succesful audit!" %(audit_account_name,auth.world.get('name')))
-                    self.getTsDatabaseID(audit_ts_id)
-                    self.updateGuildTags(self.getTsDatabaseID(audit_ts_id), auth)
+                    #self.getTsDatabaseID(audit_ts_id)
+                    self.updateGuildTags(User(self.ts_connection, unique_id = audit_ts_id), auth)
+                    #self.updateGuildTags(self.getTsDatabaseID(audit_ts_id), auth)
                     self.db_cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", (self.c_audit_date,audit_ts_id,))
                     self.db_conn.commit()
                 else:
@@ -316,7 +319,6 @@ class Bot:
         if raw_clid == self.client_id:
             return
 
-        print(self.clientNeedsVerify(raw_cluid))
         if self.clientNeedsVerify(raw_cluid):
             self.ts_connection.exec_("sendtextmessage", targetmode=1, target=raw_clid, msg=locale.get("bot_msg_verify"))
 
@@ -416,7 +418,8 @@ class Bot:
 
                                 #Add user to database so we can query their API key over time to ensure they are still on our server
                                 self.addUserToDB(rec_from_uid,auth.name,uapi,today_date,today_date)
-                                self.updateGuildTags(rec_from_uid, auth)
+                                self.updateGuildTags(User(self.ts_connection, unique_id = rec_from_uid), auth)
+                                # self.updateGuildTags(rec_from_uid, auth)
                                 TS3Auth.log("Added user to DB with ID %s" %rec_from_uid)
 
                                 #notify user they are verified
@@ -501,7 +504,7 @@ class User(object):
                 self._unique_id = ids.get("client_unique_identifier")
                 self._ts_db_id = ids.get("client_databased_id") # not required, but since we already queried it...
             else:
-                raise Error("unique ID can not be retrieved")
+                raise Error("Unique ID can not be retrieved")
         return self._unique_id
 
     @property
