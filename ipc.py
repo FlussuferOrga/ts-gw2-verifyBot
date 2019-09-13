@@ -7,7 +7,7 @@ class Server(object):
     '''
     Server for broadcasting messages.
     '''
-    def __init__(self, port, max_clients = 5, timeout = 10, terminator_symbol = "\n", client_message_handler = lambda m: False):
+    def __init__(self, port, max_clients = 5, timeout = 10, terminator_symbol = "\n", client_message_handler = lambda c,m: False):
         self.socket = socket.socket()
         self.port = port
         self.max_clients = max_clients
@@ -96,7 +96,7 @@ class Server(object):
                     mes  = pkts[0]
                     data = self.terminator_symbol.join(pkts[1:])
                     try:
-                        self.client_message_handler(json.loads(mes))
+                        self.client_message_handler(clientsocket, json.loads(mes))
                     except json.decoder.JSONDecodeError:
                         # HTTP "Bad Request" code
                         clientsocket.send("400".encode("utf-8"))

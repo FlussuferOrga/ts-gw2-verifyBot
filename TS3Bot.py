@@ -330,6 +330,9 @@ class Bot:
                 action = (toks[0], toks[1:])
         return action
 
+    def client_message_handler(self, clientsocket, message):
+        print(message)
+
     # Handler that is used every time an event (message) is received from teamspeak server
     def message_event_handler(self, event):
         """

@@ -102,8 +102,8 @@ while bot_loop_forever:
             ts3conn.exec_("use", sid=server_id)
 
             #Define our bots info
-            IPCS=ipc.Server(ipc_port)
             BOT=Bot(db_file_name,ts3conn)
+            IPCS=ipc.Server(ipc_port, client_message_handler = BOT.client_message_handler)
 
             ipcthread = Thread(target = IPCS.run)
             ipcthread.daemon = True
