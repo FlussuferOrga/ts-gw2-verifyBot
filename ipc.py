@@ -15,7 +15,8 @@ class Server(object):
         self.terminator_symbol = terminator_symbol
         self.client_message_handler = client_message_handler
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # make sure we don't have to wait for a socket timeout if the server crashes
-        self.lock = threading.Lock()
+        self.broadcast_lock = threading.Lock()
+        self.handle_message_lock = threading.Lock()
 
     def send(self, cladr, message):
         '''
@@ -42,7 +43,7 @@ class Server(object):
 
         message: the message. Can be any object.
         '''
-        self.lock.acquire()
+        self.broadcast_lock.acquire()
         closed = []
         opened = []
         # python's list.append does not return the modified list, so there is no elegant functional way to do this
@@ -56,7 +57,7 @@ class Server(object):
             cl.close()
         self.clients = opened
         #self.clients = list(filter(lambda c: c is not None, [self.send(c, message) for c in self.clients]))
-        self.lock.release() 
+        self.broadcast_lock.release() 
 
     def run(self):
         self.socket.bind(("", self.port))
@@ -117,22 +118,11 @@ class Client(object):
 
         s.connect((server_address, port))
         s.sendall(json.dumps({
-            "lb": """sadf
-            sdfsdf""", 
-            "z": "Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nnumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.   Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi. Lorem ipsum dolor sit amet, consectetuer adipiscing elit,",
-            "x": 42, 
-            "y": [11]}).encode("utf-8"))
+            "type": "post",
+            "command": "setupresetroster"
+        }).encode("utf-8"))
         s.sendall("\n".encode("utf-8"))
-        
-        s.sendall(json.dumps({"hello1": "world"}).encode("utf-8"))
-        s.sendall("\n".encode("utf-8"))
-        s.sendall(json.dumps({"hello2": "world"}).encode("utf-8"))
-        s.sendall("\n".encode("utf-8"))
-        s.sendall(json.dumps({"hello3": "world"}).encode("utf-8"))
-        s.sendall("\n".encode("utf-8"))
-        s.sendall(json.dumps({"hello4": "world"}).encode("utf-8"))
-        s.sendall(json.dumps({"hello5": "world"}).encode("utf-8"))
-        s.sendall("\n".encode("utf-8"))
+
         mes = s.recv(1024)
 
         #print(json.loads(mes.decode("utf-8")))
