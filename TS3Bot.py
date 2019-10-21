@@ -20,7 +20,7 @@ import traceback
 #### Load Configs
 #######################################
 
-current_version='1.2'
+current_version='1.3'
 
 configs = configparser.ConfigParser()
 configs.read('bot.conf')
@@ -33,11 +33,6 @@ port = configs.get('teamspeak connection settings','port')
 user = configs.get('teamspeak connection settings','user')
 passwd = configs.get('teamspeak connection settings','passwd')
 
-# Teamspeak Other Settings
-server_id = configs.get('teamspeak other settings','server_id')
-verified_group = configs.get('teamspeak other settings','verified_group')
-verified_group_id = -1 # will be cached later
-
 # Reset Roster
 reset_top_level_channel = ast.literal_eval(configs.get('reset roster', 'reset_top_level_channel'))
 reset_rgl_channel = ast.literal_eval(configs.get('reset roster', 'reset_rgl_channel'))
@@ -47,7 +42,6 @@ reset_ebg_channel = ast.literal_eval(configs.get('reset roster', 'reset_ebg_chan
 reset_channels = (reset_top_level_channel, reset_rgl_channel, reset_ggl_channel, reset_bgl_channel, reset_ebg_channel) # convenience list
 
 # BOT Settings
-bot_nickname = configs.get('bot settings','bot_nickname')
 # this setting is technically not required anymore. It just shouldn't exceed 5 minutes to avoid timeouts. 
 # An appropriate user warning will be given.
 bot_sleep_idle = int(configs.get('bot settings','bot_sleep_idle'))
@@ -89,36 +83,130 @@ if bot_sleep_idle > 300:
 #######################################
 ## Basic Classes
 #######################################
-class ThreadedTSConnection(object):
-    def __init__(self, ts_connection):
-        self.ts_connection = ts_connection 
-        self.lock = Lock()
+class ThreadsafeTSConnection(object):
+    @property
+    def uri(self):
+        return "telnet://%s:%s@%s:%s" % (self._user, self._password, self._host, str(self._port))
 
-    def tsc(self, f, eh = lambda ex: print(ex)):
+    def __init__(self, user, password, host, port, keepalive_interval = None, server_id = None, bot_nickname = None):
+        '''
+        Creates a new threadsafe TS3 connection.
+        user: user to connect as
+        password: password to connect to user with
+        host: host of TS3 server
+        port: port for server queries
+        keepalive_interval: interval in which the keepalive is sent to the ts3 server
+        server_id: the server id of the TS3 server we want to address, in case we have multiple.
+                   Note that the server id HAS to be selected at some point, using the "use" command.
+                   It has just been wrapped in here to allow for more convenient copying of the 
+                   TS3 connection where the appropriate server is selected automatically.
+        bot_nickname: nickname for the bot. Could be suffixed, see gentle_rename. If None is passed,
+                      no naming will take place.
+        '''
+        self._user = user 
+        self._password = password
+        self._host = host 
+        self._port = port
+        self._keepalive_interval = int(keepalive_interval)
+        self._server_id = server_id
+        self._bot_nickname = bot_nickname
+        self.ts_connection = ts3.query.TS3ServerConnection(self.uri) 
+        self.lock = Lock()
+        if keepalive_interval is not None:
+            schedule.every(self._keepalive_interval).seconds.do(self.tsc(lambda tc: tc.send_keepalive))
+        if server_id is not None:
+            self.tsc(lambda tc: tc.exec_("use", sid=server_id))
+        if bot_nickname is not None:
+            #self.force_rename(bot_nickname)
+            self.gentle_rename(bot_nickname)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def tsc(self, f, eh = lambda ex: traceback.print_exc()): #eh = lambda ex: print(ex)):
         res = None
         with self.lock:
             try:
                 res = f(self.ts_connection)
             except Exception as ex:
                 eh(ex)
-        print("leaving")
         return res
+
+    def close(self):
+        self.tsc(lambda tc: tc.close())
+
+    def copy(self):
+        tsc = ThreadsafeTSConnection(self._user, self._password, self._host, self._port, self._keepalive_interval, self._server_id, None)
+        # make sure to 
+        # 1. not pass bot_nickname to the constructor, or the child (copy) would call force_rename and attempt to kick the parent
+        # 2. gently rename the copy afterwards
+        tsc.gentle_rename(self._bot_nickname)
+        return tsc
+
+    def gentle_rename(self, nickname):
+        '''
+        Renames self to nickname, but attaches a running counter
+        to the name if the nickname is already taken.
+        '''
+        i = 1
+        new_nick = "%s(%d)" % (nickname,i)
+        try:
+            while self.tsc(lambda tc: tc.query("clientfind", pattern=new_nick).first(), lambda ex: None):
+                i += 1
+                new_nick = "%s(%d)" % (nickname,i)
+        except ts3.query.TS3QueryError as e:
+            # What an absolute disaster of an API!
+            # Instead of giving a None to signify that no
+            # user with the specified username exists, a vacuous error
+            # "invalid clientID", is thrown from clientfind.
+            # So we have to catch exceptions to do control flow. 
+            # Thanks for nothing.
+            new_nick = "%s(%d)" % (nickname,i)
+            self.tsc(lambda tc: tc.exec_("clientupdate", client_nickname=new_nick))
+            nickname = new_nick
+        self._bot_nickname = nickname;     
+
+    def force_rename(self, nickname):
+        '''
+        Attempts to forcefully rename self. 
+        If the chosen nickname is already taken, the bot will attempt to kick that user.
+        If that fails the bot will fall back to gentle renaming itself.
+        '''
+        try:
+            imposter = self.tsc(lambda tc: tc.query("clientfind", pattern=nickname).first(), lambda ex: None) # check if nickname is already in use
+            if imposter:
+                try:
+                    self.tsc(lambda tc: tc.exec_("clientkick", reasonid=5, reasonmsg="Reserved Nickname", clid=imposter.get("clid")))
+                    TS3Auth.log("Kicked user who was using the reserved registration bot name '%s'." % (nickname,))
+                except ts3.query.TS3QueryError as e:
+                    self.gentle_rename(nickname)
+                    TS3Auth.log("Renamed self to '%s' after kicking existing user with reserved name failed. Warning: this usually only happens for serverquery logins, meaning you are running multiple bots or you are having stale logins from crashed bot instances on your server. Only restarts can solve the latter." % (nickname,))
+            else:
+                self.gentle_rename(nickname)
+                TS3Auth.log("Renamed self to '%s'." % (nickname,))
+        except ts3.query.TS3QueryError:
+            self.tsc(lambda tc: tc.exec_("clientupdate", client_nickname=nickname))
+            self._bot_nickname = nickname
 
 class Bot:
     @property
     def ts_connection(self):
         return self._ts_connection
 
-    def tsc(self, f):
-        return self.ts_connection.tsc(f)
+    def tsc(self, f, eh = lambda ex: traceback.print_exc()):
+        return self.ts_connection.tsc(f, eh)
 
-    def __init__(self, db, ts_connection):
-        self._ts_connection = ThreadedTSConnection(ts_connection)
+    def __init__(self, db, ts_connection, verified_group, bot_nickname = "TS3BOT"):
+        self._ts_connection = ts_connection
         admin_data = self.tsc(lambda ts_connection: ts_connection.query("whoami").first())
         self.db_name = db
         self.name = admin_data.get('client_login_name')
         self.client_id = admin_data.get('client_id')
         self.nickname = bot_nickname
+        self.verified_group = verified_group
         self.vgrp_id = self.groupFind(verified_group)
         self.getUserDatabase()
         self.c_audit_date = datetime.date.today() # Todays Date
@@ -135,7 +223,7 @@ class Bot:
         client_db_id = self.getTsDatabaseID(unique_client_id)
 
         #Check if user is in verified group
-        if any(perm_grp.get('name') == verified_group for perm_grp in self.tsc(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid = client_db_id).all())):
+        if any(perm_grp.get('name') == self.verified_group for perm_grp in self.tsc(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid = client_db_id).all())):
             return False #User already verified
 
         #Check if user is authenticated in database and if so, re-adds them to the group
@@ -155,7 +243,7 @@ class Bot:
                 #Add user to group
                 self.tsc(lambda ts_connection: ts_connection.exec_("servergroupaddclient", sgid = self.vgrp_id, cldbid = client_db_id))
             except:
-                TS3Auth.log("Unable to add client to '%s' group. Does the group exist?" % verified_group)
+                TS3Auth.log("Unable to add client to '%s' group. Does the group exist?" % self.verified_group)
         except ts3.query.TS3QueryError as err:
                 TS3Auth.log("BOT [setPermissions]: Failed; %s" %err) #likely due to bad client id
 
@@ -169,7 +257,7 @@ class Bot:
             try:
                 self.tsc(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid = self.vgrp_id, cldbid = client_db_id))
             except:
-                TS3Auth.log("Unable to remove client from '%s' group. Does the group exist and are they member of the group?" %verified_group)
+                TS3Auth.log("Unable to remove client from '%s' group. Does the group exist and are they member of the group?" %self.verified_group)
             #Remove users from all groups, except the whitelisted ones
             if purge_completely:
                 # FIXME: remove channel groups as well
@@ -329,7 +417,7 @@ class Bot:
         self.db_conn.commit()
 
     def broadcastMessage(self):
-        self.tsc(lambda ts_connection: ts_connection.exec_("sendtextmessage", targetmode = 2, target = server_id, msg = locale.get("bot_msg_broadcast")))
+        self.tsc(lambda ts_connection: ts_connection.exec_("sendtextmessage", targetmode = 2, target = self._ts_connection._server_id, msg = locale.get("bot_msg_broadcast")))
 
     def getActiveTsUserID(self, client_unique_id):
         return self.tsc(lambda ts_connection: ts_connection.query("clientgetids", cluid = client_unique_id).first().get('clid'))
@@ -349,7 +437,9 @@ class Bot:
             return
 
         if self.clientNeedsVerify(raw_cluid):
-            self.tsc(lambda ts_connection: ts_connection.exec_("sendtextmessage", targetmode = 1, target = raw_clid, msg = locale.get("bot_msg_verify")))
+            self.tsc(lambda ts_connection: ts_connection.exec_("sendtextmessage", targetmode = 1, target = raw_clid, msg = locale.get("bot_msg_verify")),
+                     lambda ex: None) # error 516: invalid client type: another query-client logged in
+                            
 
     def commandCheck(self, command_string):
         action=(None, None)
@@ -396,7 +486,6 @@ class Bot:
                         chan = self.tsc(lambda ts_connection: ts_connection.query("channelfind", pattern = pattern).first())
                         self.tsc(lambda ts_connection: ts_connection.exec_("channeledit", cid = chan.get("cid"), channel_name = clean))
                     except ts3.query.TS3QueryError as ts3qe:
-                        print(ts3qe)
                         if ts3qe.resp.error["id"] == "1281":
                             # empty result set
                             # no channel found for that pattern

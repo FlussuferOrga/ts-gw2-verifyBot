@@ -19,8 +19,6 @@ import ipc
 #### Load Configs
 #######################################
 
-current_version='1.2'
-
 configs=configparser.ConfigParser()
 configs.read('bot.conf')
 
@@ -56,12 +54,6 @@ ipc_port = int(configs.get('ipc settings','ipc_port'))
 poll_group_names = ast.literal_eval(configs.get('ipc settings','poll_group_names'))
 poll_group_poll_delay = int(configs.get('ipc settings','poll_group_poll_delay'))
 
-purge_completely = False
-try:
-    purge_completely = ast.literal_eval(configs.get('bot settings','purge_completely'))
-except configparser.NoOptionError:
-    TS3Auth.log("No config setting 'purge_completely' found in the section [bot settings]. Please specify a boolean. Falling back to False.")
-
 locale_setting = "EN"
 try:
     locale_setting = configs.get('bot settings','locale')
@@ -95,14 +87,9 @@ TS3Auth.log("Initializing script....")
 while bot_loop_forever:
     try:    
         TS3Auth.log("Connecting to Teamspeak server...")
-        with ts3.query.TS3ServerConnection("telnet://%s:%s@%s:%s" % (user, passwd, host, str(port))) as ts3conn:
-            #ts3conn.exec_("login", client_login_name=user, client_login_password=passwd)
-
-            #Choose which server instance we want to join (unless multiple exist the default of 1 should be fine)
-            ts3conn.exec_("use", sid=server_id)
-
+        with ThreadsafeTSConnection(user, passwd, host, port, keepalive_interval, server_id, bot_nickname) as ts3conn:         
             #Define our bots info
-            BOT=Bot(db_file_name,ts3conn)
+            BOT=Bot(db_file_name,ts3conn,verified_group,bot_nickname)
             IPCS=ipc.Server(ipc_port, client_message_handler = BOT.client_message_handler)
 
             ipcthread = Thread(target = IPCS.run)
@@ -110,38 +97,11 @@ while bot_loop_forever:
             ipcthread.start()
             TS3Auth.log ("BOT loaded into server (%s) as %s (%s). Nickname '%s'" %(server_id,BOT.name,BOT.client_id,BOT.nickname))
 
-            # What an absolute disaster of an API!
-            # Instead of giving a None to signify that no
-            # user with the specified username exists, a vacuous error
-            # "invalid clientID", is thrown from clientfind.
-            # So we have to catch exceptions to do control flow. 
-            # Thanks for nothing.
-            try:
-                imposter = ts3conn.query("clientfind", pattern=BOT.nickname).first() # check if nickname is already in use
-                if imposter:
-                    try:
-                        ts3conn.exec_("clientkick", reasonid=5, reasonmsg="Reserved Nickname", clid=imposter.get("clid"))
-                        TS3Auth.log("Kicked user who was using the reserved registration bot name '%s'." % (BOT.nickname,))
-                    except ts3.query.TS3QueryError as e:
-                        i = 1
-                        new_nick = "%s(%d)" % (BOT.nickname,i)
-                        try:
-                            while ts3conn.query("clientfind", pattern=new_nick).first():
-                                i += 1
-                                new_nick = "%s(%d)" % (BOT.nickname,i)
-                        except ts3.query.TS3QueryError as e:
-                            new_nick = "%s(%d)" % (BOT.nickname,i)
-                            ts3conn.exec_("clientupdate", client_nickname=new_nick)
-                            BOT.nickname = new_nick
-                            TS3Auth.log("Renamed self to '%s' after kicking existing user with reserved name failed. Warning: this usually only happens for serverquery logins, meaning you are running multiple bots or you are having stale logins from crashed bot instances on your server. Only restarts can solve the latter." % (new_nick,))
-            except ts3.query.TS3QueryError:
-                ts3conn.exec_("clientupdate", client_nickname=BOT.nickname)
-
             # Find the verify channel
             verify_channel_id=0
             while verify_channel_id == 0:
                 try:
-                    channel = ts3conn.query("channelfind", pattern=channel_name).first()
+                    channel = ts3conn.tsc(lambda tc: tc.query("channelfind", pattern=channel_name).first())
                     verify_channel_id=channel.get('cid')
                     channel_name=channel.get('channel_name')
                 except:
@@ -152,18 +112,18 @@ while bot_loop_forever:
             verified_group_id = BOT.groupFind(verified_group)
 
             # Find default server group
-            default_server_group_id = ts3conn.query("serverinfo").first().get("virtualserver_default_server_group")
+            default_server_group_id = ts3conn.tsc(lambda tc: tc.query("serverinfo").first().get("virtualserver_default_server_group"))
 
             # Move ourselves to the Verify chanel and register for text events
             try:
-                ts3conn.exec_("clientmove", clid=BOT.client_id, cid=verify_channel_id)
+                ts3conn.tsc(lambda tc: tc.exec_("clientmove", clid=BOT.client_id, cid=verify_channel_id))
                 TS3Auth.log ("BOT has joined channel '%s' (%s)." %(channel_name,verify_channel_id))
             except ts3.query.TS3QueryError as chnl_err: #BOT move failed because
                 TS3Auth.log("BOT Attempted to join channel '%s' (%s) WARN: %s" %(channel_name,verify_channel_id,chnl_err.resp.error["msg"]))
             
-            ts3conn.exec_("servernotifyregister", event="textchannel") #alert channel chat
-            ts3conn.exec_("servernotifyregister", event="textprivate") #alert Private chat
-            ts3conn.exec_("servernotifyregister", event="server")
+            ts3conn.tsc(lambda tc: tc.exec_("servernotifyregister", event="textchannel")) #alert channel chat
+            ts3conn.tsc(lambda tc: tc.exec_("servernotifyregister", event="textprivate")) #alert Private chat
+            ts3conn.tsc(lambda tc: tc.exec_("servernotifyregister", event="server"))
 
             #Send message to the server that the BOT is up
             # ts3conn.exec_("sendtextmessage", targetmode=3, target=server_id, msg=locale.get("bot_msg",(bot_nickname,)))
@@ -177,7 +137,7 @@ while bot_loop_forever:
             schedule.every(audit_interval).days.do(BOT.auditUsers)
 
             #Since v2 of the ts3 library, keepalive must be sent manually to not screw with threads
-            schedule.every(keepalive_interval).seconds.do(ts3conn.send_keepalive)
+            schedule.every(keepalive_interval).seconds.do(ts3conn.tsc(lambda tc: tc.send_keepalive))
 
             commander_checker = CommanderChecker(BOT, IPCS, poll_group_names, poll_group_poll_delay)
 
@@ -188,16 +148,12 @@ while bot_loop_forever:
 
             #Forces script to loop forever while we wait for events to come in, unless connection timed out. Then it should loop a new bot into creation.
             TS3Auth.log("BOT now idle, waiting for requests.")
-            while ts3conn.is_connected():
+            while ts3conn.tsc(lambda tc: tc.is_connected()):
                 #auditjob + keepalive check
                 schedule.run_pending()
-                try:
-                    event = ts3conn.wait_for_event(timeout=bot_sleep_idle)
-                except ts3.query.TS3TimeoutError:
-                    pass
-                else:
+                event = ts3conn.tsc(lambda tc: tc.wait_for_event(timeout=bot_sleep_idle), eh = lambda ex: None)
+                if event:
                     try:
-                        # print(vars(event))
                         if "msg" in event.parsed[0]:
                             # text message
                             BOT.message_event_handler(event) # handle event

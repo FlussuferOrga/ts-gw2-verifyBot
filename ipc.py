@@ -1,6 +1,7 @@
 import socket
 import json
 import threading
+import schedule
 from TS3Auth import log
 
 class Server(object):
@@ -17,6 +18,7 @@ class Server(object):
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # make sure we don't have to wait for a socket timeout if the server crashes
         self.broadcast_lock = threading.Lock()
         self.handle_message_lock = threading.Lock()
+        self.clients = []
 
     def send(self, cladr, message):
         '''
