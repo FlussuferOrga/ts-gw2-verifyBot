@@ -1,14 +1,8 @@
+import Config
 import gw2api.v2
 from datetime import datetime
-import configparser
 import ast
 import sys
-
-auth_configs=configparser.ConfigParser()
-auth_configs.read('bot.conf')
-
-required_servers = ast.literal_eval(auth_configs.get('auth settings','required_servers')) # expects a pythonic list, Ex. ['Tarnished Coast','Kaineng']
-required_level = auth_configs.get('auth settings','required_level')
 
 log_file = 'TS3Auth.log'
 
@@ -39,8 +33,8 @@ class AuthRequest:
         self.user = user_id
         self.success = False # Used to verify if user is on our server
         self.char_check = False # Used to verify is any character is at least 80
-        self.required_level=int(required_level)
-        self.required_servers=required_servers
+        self.required_level=int(Config.required_level)
+        self.required_servers=Config.required_servers
         
         self.pushCharacterAuth()
         self.pushAccountAuth()
@@ -100,7 +94,7 @@ class AuthRequest:
         log("%s %s Running auth check for %s" %(h_hdr,h_auth,self.name))
 
         #Check if they are on the required server
-        if self.users_server in required_servers:
+        if self.users_server in self.required_servers:
             #Check if player has met character requirements
             if self.char_check:
                 self.success = True

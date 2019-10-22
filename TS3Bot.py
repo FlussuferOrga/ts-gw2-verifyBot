@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import Config
 import ts3 #teamspeak library
 import time #time for sleep function
 import re #regular expressions
@@ -6,77 +7,12 @@ import TS3Auth #includes datetime import
 import sqlite3 #Database
 import os #operating system commands -check if files exist
 import datetime #for date strings
-import configparser #parse in configuratio
-import ast #eval a string to a list/boolean (for cmd_list from 'bot settings' or DEBUG from config)
 import schedule # Allows auditing of users every X days
 from bot_messages import * #Import all Static messages the BOT may need
 from threading import Thread, Lock, currentThread
 import sys
 import ipc
 import traceback
-
-
-#######################################
-#### Load Configs
-#######################################
-
-current_version='1.3'
-
-configs = configparser.ConfigParser()
-configs.read('bot.conf')
-
-cmd_list = ast.literal_eval(configs.get('bot settings','cmd_list'))
-
-# Teamspeak Connection Settings
-host = configs.get('teamspeak connection settings','host')
-port = configs.get('teamspeak connection settings','port')
-user = configs.get('teamspeak connection settings','user')
-passwd = configs.get('teamspeak connection settings','passwd')
-
-# Reset Roster
-reset_top_level_channel = ast.literal_eval(configs.get('reset roster', 'reset_top_level_channel'))
-reset_rgl_channel = ast.literal_eval(configs.get('reset roster', 'reset_rgl_channel'))
-reset_ggl_channel = ast.literal_eval(configs.get('reset roster', 'reset_ggl_channel'))
-reset_bgl_channel = ast.literal_eval(configs.get('reset roster', 'reset_bgl_channel'))
-reset_ebg_channel = ast.literal_eval(configs.get('reset roster', 'reset_ebg_channel'))
-reset_channels = (reset_top_level_channel, reset_rgl_channel, reset_ggl_channel, reset_bgl_channel, reset_ebg_channel) # convenience list
-
-# BOT Settings
-# this setting is technically not required anymore. It just shouldn't exceed 5 minutes to avoid timeouts. 
-# An appropriate user warning will be given.
-bot_sleep_idle = int(configs.get('bot settings','bot_sleep_idle'))
-audit_period = int(configs.get('bot settings','audit_period')) #How long a single user can go without being audited
-client_restriction_limit= int(configs.get('bot settings','client_restriction_limit'))
-
-purge_completely = False
-try:
-    purge_completely = ast.literal_eval(configs.get('bot settings','purge_completely'))
-except configparser.NoOptionError:
-    TS3Auth.log("No config setting 'purge_completely' found in the section [bot settings]. Please specify a boolean. Falling back to False.")
-
-locale_setting = "EN"
-try:
-    locale_setting = configs.get('bot settings','locale')
-except configparser.NoOptionError:
-    TS3Auth.log("No config setting 'locale' found in the section [bot settings]. Please specify an available locale setting (ex. EN or DE). Falling back to English.")
-
-purge_whitelist = ["Server Admin"]
-try:
-    purge_whitelist = ast.literal_eval(configs.get('bot settings','purge_whitelist'))
-except configparser.NoOptionError:
-    TS3Auth.log("No config setting 'purge_whitelist' found in the section [bot settings]. Falling back to 'Server Admin' group only.")
-
-keepalive_interval = 60
-
-# Debugging (on or off) True/False
-DEBUG = ast.literal_eval(configs.get('DEBUGGING','DEBUG'))
-
-locale = getLocale(locale_setting)
-
-default_server_group_id = -1
-
-if bot_sleep_idle > 300:
-    TS3Auth.log("WARNING: setting bot_sleep_idle to a value higher than 300 seconds could result in timeouts!")
 
 #######################################
 def default_exception_handler(ex):
@@ -263,7 +199,7 @@ class Bot:
     def setPermissions(self, unique_client_id):
         try:
             client_db_id = self.getTsDatabaseID(unique_client_id)
-            if DEBUG:
+            if Config.DEBUG:
                 TS3Auth.log("Adding Permissions: CLUID [%s] SGID: %s   CLDBID: %s" % (unique_client_id, self.vgrp_id, client_db_id))
             #Add user to group
             _,ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupaddclient", sgid = self.vgrp_id, cldbid = client_db_id))
@@ -275,19 +211,19 @@ class Bot:
     def removePermissions(self, unique_client_id):
         try:
             client_db_id = self.getTsDatabaseID(unique_client_id)
-            if DEBUG:
+            if Config.DEBUG:
                 TS3Auth.log("Removing Permissions: CLUID [%s] SGID: %s   CLDBID: %s" % (unique_client_id, self.vgrp_id, client_db_id))
 
             #Remove user from group
             _,ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid = self.vgrp_id, cldbid = client_db_id), signal_exception_handler)
             if ex:
-                TS3Auth.log("Unable to remove client from '%s' group. Does the group exist and are they member of the group?" %self.verified_group)
+                TS3Auth.log("Unable to remove client from '%s' group. Does the group exist and are they member of the group?" % self.verified_group)
             #Remove users from all groups, except the whitelisted ones
-            if purge_completely:
+            if Config.purge_completely:
                 # FIXME: remove channel groups as well
                 assigned_groups, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid = client_db_id).all())
                 for g in assigned_groups:
-                    if g.get("name") not in purge_whitelist:
+                    if g.get("name") not in Config.purge_whitelist:
                         self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid = g.get("sgid"), cldbid = client_db_id), lambda ex: None)
         except ts3.query.TS3QueryError as err:
             TS3Auth.log("BOT [removePermissions]: Failed; %s" %err) #likely due to bad client id
@@ -341,7 +277,7 @@ class Bot:
 
     def TsClientLimitReached(self, gw_acct_name):
         current_entries = self.db_cursor.execute("SELECT * FROM users WHERE account_name=?",  (gw_acct_name, )).fetchall()
-        return len(current_entries) >= client_restriction_limit
+        return len(current_entries) >= Config.client_restriction_limit
 
     def addUserToDB(self, client_unique_id, account_name, api_key, created_date, last_audit_date):
         client_id = self.getActiveTsUserID(client_unique_id)
@@ -414,12 +350,12 @@ class Bot:
             audit_created_date = audit_user[3]
             audit_last_audit_date = audit_user[4]
 
-            if DEBUG:
+            if Config.DEBUG:
                 print("Audit: User ",audit_account_name)
-                print("TODAY |%s|  NEXT AUDIT |%s|" % (self.c_audit_date, audit_last_audit_date + datetime.timedelta(days = audit_period)))
+                print("TODAY |%s|  NEXT AUDIT |%s|" % (self.c_audit_date, audit_last_audit_date + datetime.timedelta(days = Config.audit_period)))
 
             #compare audit date
-            if self.c_audit_date >= audit_last_audit_date + datetime.timedelta(days = audit_period):
+            if self.c_audit_date >= audit_last_audit_date + datetime.timedelta(days = Config.audit_period):
                 TS3Auth.log ("User %s is due for auditing!" %audit_account_name)
                 auth = TS3Auth.AuthRequest(audit_api_key, audit_account_name)
                 if auth.success:
@@ -438,7 +374,7 @@ class Bot:
         self.db_conn.commit()
 
     def broadcastMessage(self):
-        self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("sendtextmessage", targetmode = 2, target = self._ts_connection._server_id, msg = locale.get("bot_msg_broadcast")))
+        self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("sendtextmessage", targetmode = 2, target = self._ts_connection._server_id, msg = Config.locale.get("bot_msg_broadcast")))
 
     def getActiveTsUserID(self, client_unique_id):
         return self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("clientgetids", cluid = client_unique_id).first().get('clid'))[0]
@@ -458,14 +394,14 @@ class Bot:
             return
 
         if self.clientNeedsVerify(raw_cluid):
-            self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("sendtextmessage", targetmode = 1, target = raw_clid, msg = locale.get("bot_msg_verify")),
+            self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("sendtextmessage", targetmode = 1, target = raw_clid, msg = Config.locale.get("bot_msg_verify")),
                                         ignore_exception_handler) # error 516: invalid client type: another query-client logged in
                             
 
     def commandCheck(self, command_string):
         action=(None, None)
-        for allowed_cmd in cmd_list:
-            if re.match('(^%s)\s*' % (allowed_cmd,) ,command_string):
+        for allowed_cmd in Config.cmd_list:
+            if re.match('(^%s)\s*' % (allowed_cmd,), command_string):
                 toks = command_string.split() # no argument for split() splits on arbitrary whitespace
                 action = (toks[0], toks[1:])
         return action
@@ -474,7 +410,7 @@ class Bot:
         v = dictionary[key] if key in dictionary else default 
         return v.lower() if lower and isinstance(v, str) else v 
 
-    def client_message_handler(self, clientsocket, message):
+    def client_message_handler(self, ipcserver, clientsocket, message):
         mtype = self.try_get(message, "type", True)
         mcommand = self.try_get(message, "command", True)
         margs = self.try_get(message, "args", default = [])
@@ -486,7 +422,7 @@ class Bot:
         if mtype == "post":
             # POST commands
             if mcommand == "setupresetroster":
-                for pattern, clean in reset_channels:
+                for pattern, clean in Config.reset_channels:
                     #def find_channel(ts_connection):
                     #    print(pattern)
                     #    r = ts_connection.query("channelfind", pattern = pattern)
@@ -503,13 +439,13 @@ class Bot:
                     #    def edit_channel(ts_connection):
                     #        ts_connection.exec_("channeledit", cid = cid, channel_name = clean)
                     #    self.tsc(edit_channel)
-                    chan, ts3qe = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("channelfind", pattern = pattern).first())
+                    chan, ts3qe = ipcserver.ts_connection.ts3exec(lambda tsc: tsc.query("channelfind", pattern = pattern).first(), signal_exception_handler)
                     if ts3qe and ts3qe.resp.error["id"] == "1281":
                         # empty result set
                         # no channel found for that pattern
                         TS3Auth.log("No channel found with pattern '%s'. Skipping." % (pattern,))
                     else:
-                        _, ts3qe = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("channeledit", cid = chan.get("cid"), channel_name = clean))                     
+                        _, ts3qe = ipcserver.ts_connection.ts3exec(lambda tsc: tsc.exec_("channeledit", cid = chan.get("cid"), channel_name = clean), signal_exception_handler)                     
                         if ts3qe and ts3qe.resp.error["id"] == "771":
                             # channel name already in use
                             # probably not a bug (channel still unused), but can be a config problem
@@ -523,8 +459,8 @@ class Bot:
                 for i in range(len(reset_channels)):
                     patter, clean = reset_channels[i]
                     mlead = mleads[i]
-                    chan, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("channelfind", pattern = pattern).first())
-                    self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("channeledit", cid = chan.get("cid"), channel_name="%s%s" % (clean, mleads.join(", "))))
+                    chan, ex = ipcserver.ts_connection.ts3exec(lambda tsc: tsc.query("channelfind", pattern = pattern).first())
+                    ipcserver.ts_connection.ts3exec(lambda tsc: tsc.exec_("channeledit", cid = chan.get("cid"), channel_name="%s%s" % (clean, mleads.join(", "))))
                
 
     # Handler that is used every time an event (message) is received from teamspeak server
@@ -533,7 +469,7 @@ class Bot:
         *event* is a ts3.response.TS3Event instance, that contains the name
         of the event and the data.
         """
-        if DEBUG:
+        if Config.DEBUG:
             print("\nEvent:")
             print("  event.event:", event.event)
             print("  event.parsed:", event.parsed)
@@ -557,11 +493,11 @@ class Bot:
                         self.db_cursor.execute("INSERT INTO guild_ignores(guild_id, ts_db_id, ts_name) VALUES((SELECT guild_id FROM guilds WHERE ts_group = ?), ?,?)", (args[0], rec_from_uid, rec_from_name))
                         self.db_conn.commit()
                         TS3Auth.log("Success!")
-                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = locale.get("bot_hide_guild_success")))
+                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_hide_guild_success")))
                     except sqlite3.IntegrityError:
                         self.db_conn.rollback()
                         TS3Auth.log("Failed. The group probably doesn't exist or the user is already part of the group.")
-                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = locale.get("bot_hide_guild_unknown")))
+                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_hide_guild_unknown")))
 
                 elif cmd == "unhideguild":
                     TS3Auth.log("User '%s' wants to unhide guild '%s'." % (rec_from_name, args[0]))
@@ -570,18 +506,18 @@ class Bot:
                     self.db_conn.commit()
                     if changes > 0:
                         TS3Auth.log("Success!")
-                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = locale.get("bot_unhide_guild_success")))
+                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_unhide_guild_success")))
                     else:
                         TS3Auth.log("Failed. Either the guild is unknown or the user had not hidden the guild anyway.")
-                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = locale.get("bot_unhide_guild_unknown")))
+                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_unhide_guild_unknown")))
                 elif cmd == 'verifyme':
                     return # command disabled for now
                     if self.clientNeedsVerify(rec_from_uid):
                         TS3Auth.log("Verify Request Recieved from user '%s'. Sending PM now...\n        ...waiting for user response." %rec_from_name)
-                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = locale.get("bot_msg_verify")))
+                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_verify")))
                     else:
                         TS3Auth.log("Verify Request Recieved from user '%s'. Already verified, notified user." %rec_from_name)
-                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = locale.get("bot_msg_alrdy_verified")))
+                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_alrdy_verified")))
 
             # Type 1 means it was a private message
             elif rec_type == '1':
@@ -597,12 +533,12 @@ class Bot:
                         TS3Auth.log("Received verify response from %s" %rec_from_name)
                         auth = TS3Auth.AuthRequest(uapi)
                         
-                        if DEBUG:
+                        if Config.DEBUG:
                             TS3Auth.log('Name: |%s| API: |%s|' % (auth.name, uapi))
 
                         if auth.success:
                             limit_hit = self.TsClientLimitReached(auth.name)
-                            if DEBUG:
+                            if Config.DEBUG:
                                 print("Limit hit check: %s" %limit_hit)
                             if not limit_hit:
                                 TS3Auth.log("Setting permissions for %s as verified." %rec_from_name)
@@ -620,19 +556,19 @@ class Bot:
                                 TS3Auth.log("Added user to DB with ID %s" %rec_from_uid)
 
                                 #notify user they are verified
-                                self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = locale.get("bot_msg_success")))
+                                self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_success")))
                             else:
                                 # client limit is set and hit
-                                self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = locale.get("bot_msg_limit_Hit")))
+                                self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_limit_Hit")))
                                 TS3Auth.log("Received API Auth from %s, but %s has reached the client limit." % (rec_from_name, rec_from_name))
                         else:
                             #Auth Failed
-                            self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = locale.get("bot_msg_fail")))
+                            self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_fail")))
                     else:
                         TS3Auth.log("Received API Auth from %s, but %s is already verified. Notified user as such." % (rec_from_name, rec_from_name))
-                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = locale.get("bot_msg_alrdy_verified")))
+                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_alrdy_verified")))
                 else: 
-                    self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = locale.get("bot_msg_rcv_default")))
+                    self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_rcv_default")))
                     TS3Auth.log("Received bad response from %s [msg= %s]" % (rec_from_name, raw_cmd.encode('utf-8')))
                     # sys.exit(0)
         except Exception as e:
