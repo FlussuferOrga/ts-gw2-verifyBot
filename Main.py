@@ -20,56 +20,56 @@ import ipc
 #######################################
 
 configs=configparser.ConfigParser()
-configs.read('bot.conf')
+configs.read("bot.conf")
 
 
 # Teamspeak Connection Settings
-host = configs.get('teamspeak connection settings','host')
-port = configs.get('teamspeak connection settings','port')
-user = configs.get('teamspeak connection settings','user')
-passwd = configs.get('teamspeak connection settings','passwd')
+host = configs.get("teamspeak connection settings","host")
+port = configs.get("teamspeak connection settings","port")
+user = configs.get("teamspeak connection settings","user")
+passwd = configs.get("teamspeak connection settings","passwd")
 
 
 # Teamspeak Other Settings
-server_id = configs.get('teamspeak other settings','server_id')
-channel_name = configs.get('teamspeak other settings','channel_name')
-verified_group = configs.get('teamspeak other settings','verified_group')
+server_id = configs.get("teamspeak other settings","server_id")
+channel_name = configs.get("teamspeak other settings","channel_name")
+verified_group = configs.get("teamspeak other settings","verified_group")
 verified_group_id = -1 # will be cached later
 
 # BOT Settings
-bot_nickname = configs.get('bot settings','bot_nickname')
-bot_sleep_conn_lost = int(configs.get('bot settings','bot_sleep_conn_lost'))
-# this setting is technically not required anymore. It just shouldn't exceed 5 minutes to avoid timeouts. 
+bot_nickname = configs.get("bot settings","bot_nickname")
+bot_sleep_conn_lost = int(configs.get("bot settings","bot_sleep_conn_lost"))
+# this setting is technically not required anymore. It just shouldn"t exceed 5 minutes to avoid timeouts. 
 # An appropriate user warning will be given.
-bot_sleep_idle = int(configs.get('bot settings','bot_sleep_idle'))
-cmd_list = ast.literal_eval(configs.get('bot settings','cmd_list'))
-db_file_name = configs.get('bot settings','db_file_name')
-audit_period = int(configs.get('bot settings','audit_period')) #How long a single user can go without being audited
-audit_interval = int(configs.get('bot settings','audit_interval')) # how often the BOT audits all users
-client_restriction_limit= int(configs.get('bot settings','client_restriction_limit'))
-timer_msg_broadcast = int(configs.get('bot settings','broadcast_message_timer'))
+bot_sleep_idle = int(configs.get("bot settings","bot_sleep_idle"))
+cmd_list = ast.literal_eval(configs.get("bot settings","cmd_list"))
+db_file_name = configs.get("bot settings","db_file_name")
+audit_period = int(configs.get("bot settings","audit_period")) #How long a single user can go without being audited
+audit_interval = int(configs.get("bot settings","audit_interval")) # how often the BOT audits all users
+client_restriction_limit= int(configs.get("bot settings","client_restriction_limit"))
+timer_msg_broadcast = int(configs.get("bot settings","broadcast_message_timer"))
 
-ipc_port = int(configs.get('ipc settings','ipc_port'))
+ipc_port = int(configs.get("ipc settings","ipc_port"))
 
-poll_group_names = ast.literal_eval(configs.get('ipc settings','poll_group_names'))
-poll_group_poll_delay = int(configs.get('ipc settings','poll_group_poll_delay'))
+poll_group_names = ast.literal_eval(configs.get("ipc settings","poll_group_names"))
+poll_group_poll_delay = int(configs.get("ipc settings","poll_group_poll_delay"))
 
 locale_setting = "EN"
 try:
-    locale_setting = configs.get('bot settings','locale')
+    locale_setting = configs.get("bot settings","locale")
 except configparser.NoOptionError:
     TS3Auth.log("No config setting 'locale' found in the section [bot settings]. Please specify an available locale setting (ex. EN or DE). Falling back to English.")
 
 purge_whitelist = ["Server Admin"]
 try:
-    purge_whitelist = ast.literal_eval(configs.get('bot settings','purge_whitelist'))
+    purge_whitelist = ast.literal_eval(configs.get("bot settings","purge_whitelist"))
 except configparser.NoOptionError:
     TS3Auth.log("No config setting 'purge_whitelist' found in the section [bot settings]. Falling back to 'Server Admin' group only.")
 
 keepalive_interval = 60
 
 # Debugging (on or off) True/False
-DEBUG = ast.literal_eval(configs.get('DEBUGGING','DEBUG'))
+DEBUG = ast.literal_eval(configs.get("DEBUGGING","DEBUG"))
 
 locale = getLocale(locale_setting)
 
@@ -88,7 +88,6 @@ while bot_loop_forever:
     try:    
         TS3Auth.log("Connecting to Teamspeak server...")
         with ThreadsafeTSConnection(user, passwd, host, port, keepalive_interval, server_id, bot_nickname) as ts3conn:         
-            #Define our bots info
             BOT=Bot(db_file_name,ts3conn,verified_group,bot_nickname)
             IPCS=ipc.Server(ipc_port, client_message_handler = BOT.client_message_handler)
 
@@ -100,30 +99,30 @@ while bot_loop_forever:
             # Find the verify channel
             verify_channel_id=0
             while verify_channel_id == 0:
-                try:
-                    channel = ts3conn.tsc(lambda tc: tc.query("channelfind", pattern=channel_name).first())
-                    verify_channel_id=channel.get('cid')
-                    channel_name=channel.get('channel_name')
-                except:
+                channel, ex = ts3conn.ts3exec(lambda tc: tc.query("channelfind", pattern=channel_name).first(), signal_exception_handler)
+                if ex:
                     TS3Auth.log ("Unable to locate channel with name '%s'. Sleeping for 10 seconds..." %(channel_name))
                     time.sleep(10)
+                else:
+                    verify_channel_id=channel.get("cid")
+                    channel_name=channel.get("channel_name")                  
 
             # Find the verify group ID
             verified_group_id = BOT.groupFind(verified_group)
 
             # Find default server group
-            default_server_group_id = ts3conn.tsc(lambda tc: tc.query("serverinfo").first().get("virtualserver_default_server_group"))
+            default_server_group_id, ex = ts3conn.ts3exec(lambda tc: tc.query("serverinfo").first().get("virtualserver_default_server_group"))
 
             # Move ourselves to the Verify chanel and register for text events
-            try:
-                ts3conn.tsc(lambda tc: tc.exec_("clientmove", clid=BOT.client_id, cid=verify_channel_id))
-                TS3Auth.log ("BOT has joined channel '%s' (%s)." %(channel_name,verify_channel_id))
-            except ts3.query.TS3QueryError as chnl_err: #BOT move failed because
+            _, chnl_err = ts3conn.ts3exec(lambda tc: tc.exec_("clientmove", clid=BOT.client_id, cid=verify_channel_id))
+            if chnl_err:
                 TS3Auth.log("BOT Attempted to join channel '%s' (%s) WARN: %s" %(channel_name,verify_channel_id,chnl_err.resp.error["msg"]))
+            else:
+                TS3Auth.log ("BOT has joined channel '%s' (%s)." %(channel_name,verify_channel_id))             
             
-            ts3conn.tsc(lambda tc: tc.exec_("servernotifyregister", event="textchannel")) #alert channel chat
-            ts3conn.tsc(lambda tc: tc.exec_("servernotifyregister", event="textprivate")) #alert Private chat
-            ts3conn.tsc(lambda tc: tc.exec_("servernotifyregister", event="server"))
+            ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="textchannel")) #alert channel chat
+            ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="textprivate")) #alert Private chat
+            ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="server"))
 
             #Send message to the server that the BOT is up
             # ts3conn.exec_("sendtextmessage", targetmode=3, target=server_id, msg=locale.get("bot_msg",(bot_nickname,)))
@@ -137,7 +136,7 @@ while bot_loop_forever:
             schedule.every(audit_interval).days.do(BOT.auditUsers)
 
             #Since v2 of the ts3 library, keepalive must be sent manually to not screw with threads
-            schedule.every(keepalive_interval).seconds.do(ts3conn.tsc(lambda tc: tc.send_keepalive))
+            schedule.every(keepalive_interval).seconds.do(lambda _: ts3conn.ts3exec(lambda tc: tc.send_keepalive))
 
             commander_checker = CommanderChecker(BOT, IPCS, poll_group_names, poll_group_poll_delay)
 
@@ -148,10 +147,10 @@ while bot_loop_forever:
 
             #Forces script to loop forever while we wait for events to come in, unless connection timed out. Then it should loop a new bot into creation.
             TS3Auth.log("BOT now idle, waiting for requests.")
-            while ts3conn.tsc(lambda tc: tc.is_connected()):
+            while ts3conn.ts3exec(lambda tc: tc.is_connected(), signal_exception_handler)[0]:
                 #auditjob + keepalive check
                 schedule.run_pending()
-                event = ts3conn.tsc(lambda tc: tc.wait_for_event(timeout=bot_sleep_idle), eh = lambda ex: None)
+                event, ex = ts3conn.ts3exec(lambda tc: tc.wait_for_event(timeout=bot_sleep_idle), ignore_exception_handler)
                 if event:
                     try:
                         if "msg" in event.parsed[0]:
@@ -165,11 +164,11 @@ while bot_loop_forever:
                     except Exception as ex:
                         TS3Auth.log("Error while trying to handle event %s: %s" % (str(event), str(ex)))
 
-        TS3Auth.log("It appears the BOT has lost connection to teamspeak. Trying to restart connection in %s seconds...." %bot_sleep_conn_lost)
+        TS3Auth.log("It appears the BOT has lost connection to teamspeak. Trying to restart connection in %s seconds...." % bot_sleep_conn_lost)
         time.sleep(bot_sleep_conn_lost)
 
     except (ConnectionRefusedError, ts3.query.TS3TransportError):
-        TS3Auth.log("Unable to reach teamspeak server..trying again in %s seconds..." %bot_sleep_conn_lost)
+        TS3Auth.log("Unable to reach teamspeak server..trying again in %s seconds..." % bot_sleep_conn_lost)
         time.sleep(bot_sleep_conn_lost)
     except (KeyboardInterrupt, SystemExit):
         bot_loop_forever = False

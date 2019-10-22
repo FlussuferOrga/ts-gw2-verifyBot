@@ -33,7 +33,7 @@ def log(msg,silent=False):
 
 # Class for an authentication request from user
 
-class auth_request:
+class AuthRequest:
     def __init__(self,api_key,user_id=''): #User ID left at None for queries that don't require authentication. If left at None the 'success' will always fail due to self.authCheck().
         self.key = api_key
         self.user = user_id
@@ -101,15 +101,12 @@ class auth_request:
 
         #Check if they are on the required server
         if self.users_server in required_servers:
-
             #Check if player has met character requirements
             if self.char_check:
                 self.success = True
                 log("%s %s Auth Success for user %s." %(h_hdr,h_auth,self.user))
-
             else:
                 log("%s %s User %s is on the correct server but does not have any level %s characters." %(h_hdr,h_auth,self.user,self.users_server))
-
         else:
             log("%s %s Authentication Failed with:\n\n    User Gave:\n        ~USER ID: %s\n          ~Server: %s\n\n     Expected:\n         ~USER ID: %s\n          ~Server: %s\n\n" %(h_hdr,h_auth,self.user,self.users_server,self.name,self.required_servers))
         return self.success
