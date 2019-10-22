@@ -125,7 +125,7 @@ class ThreadsafeTSConnection(object):
         self.ts_connection = ts3.query.TS3ServerConnection(self.uri) 
         self.lock = Lock()
         if keepalive_interval is not None:
-            schedule.every(self._keepalive_interval).seconds.do(lambda _: self.ts3exec(lambda tc: tc.send_keepalive))
+            schedule.every(self._keepalive_interval).seconds.do(lambda: self.ts3exec(lambda tc: tc.send_keepalive))
         if server_id is not None:
             self.ts3exec(lambda tc: tc.exec_("use", sid=server_id))
         if bot_nickname is not None:

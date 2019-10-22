@@ -136,7 +136,7 @@ while bot_loop_forever:
             schedule.every(audit_interval).days.do(BOT.auditUsers)
 
             #Since v2 of the ts3 library, keepalive must be sent manually to not screw with threads
-            schedule.every(keepalive_interval).seconds.do(lambda _: ts3conn.ts3exec(lambda tc: tc.send_keepalive))
+            schedule.every(keepalive_interval).seconds.do(lambda: ts3conn.ts3exec(lambda tc: tc.send_keepalive))
 
             commander_checker = CommanderChecker(BOT, IPCS, poll_group_names, poll_group_poll_delay)
 
