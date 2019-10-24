@@ -116,6 +116,8 @@ poll_group_poll_delay = 60
 # aka a substring and should therefore be unique, see:
 # https://sk-gameservers.de/ts3-server-query-befehle-alle#channelfind
 # the clean label is what will be used to (re)set the label when a command needs to do so.
+# Variables you can use that will be replaced:
+# $DATE
 reset_top_level_channel = ('reset roster','Reset Roster') # pattern will find "Reset Roster - 13.09.19" for example
 reset_rgl_channel = ('red bl','Red BL:')
 reset_bgl_channel = ('blue bl','Blue BL:')

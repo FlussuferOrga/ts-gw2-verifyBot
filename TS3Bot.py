@@ -406,39 +406,23 @@ class Bot:
                 action = (toks[0], toks[1:])
         return action
 
-    def try_get(self, dictionary, key, lower = False, default = None):
-        v = dictionary[key] if key in dictionary else default 
+    def try_get(self, dictionary, key, lower = False, typer = lambda x: x, default = None):
+        v = typer(dictionary[key] if key in dictionary else default)
         return v.lower() if lower and isinstance(v, str) else v 
 
     def client_message_handler(self, ipcserver, clientsocket, message):
-        mtype = self.try_get(message, "type", True)
-        mcommand = self.try_get(message, "command", True)
-        margs = self.try_get(message, "args", default = [])
+        mtype = self.try_get(message, "type", lower = True)
+        mcommand = self.try_get(message, "command", lower = True)
+        margs = self.try_get(message, "args", typer = lambda a: dict(a), default = {})
 
         print("[%s] %s" % (mtype, mcommand))
-        if not isinstance(margs, list):
-            margs = [margs]
 
         if mtype == "post":
             # POST commands
             if mcommand == "setupresetroster":
-                for pattern, clean in Config.reset_channels:
-                    #def find_channel(ts_connection):
-                    #    print(pattern)
-                    #    r = ts_connection.query("channelfind", pattern = pattern)
-                    #    print("done query")
-                    #    chan = r.first()
-                    #    print("done all")
-                    #    return chan
-
-                    #chan = self.tsc(find_channel)
-                    #if chan:
-                    #    cid = chan.get("cid")
-                    #    print(cid)
-
-                    #    def edit_channel(ts_connection):
-                    #        ts_connection.exec_("channeledit", cid = cid, channel_name = clean)
-                    #    self.tsc(edit_channel)
+                date = margs["date"]
+                channels = [(p,c.replace("$DATE", date)) for p,c in  Config.reset_channels]
+                for pattern, clean in channels:
                     chan, ts3qe = ipcserver.ts_connection.ts3exec(lambda tsc: tsc.query("channelfind", pattern = pattern).first(), signal_exception_handler)
                     if ts3qe and ts3qe.resp.error["id"] == "1281":
                         # empty result set

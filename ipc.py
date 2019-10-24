@@ -122,7 +122,8 @@ class Client(object):
         s.connect((server_address, port))
         s.sendall(json.dumps({
             "type": "post",
-            "command": "setupresetroster"
+            "command": "setupresetroster",
+            "args": {"date": "2220.12.19"}
         }).encode("utf-8"))
         s.sendall("\n".encode("utf-8"))
 
