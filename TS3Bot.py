@@ -410,6 +410,29 @@ class Bot:
         v = typer(dictionary[key] if key in dictionary else default)
         return v.lower() if lower and isinstance(v, str) else v 
 
+    def setresetroster(self, ts3conn, red = [], green = [], blue = [], ebg = []):
+        leads = (red, green, blue, ebg) # keep RGB order! EBG as last!
+        for i in range(len(reset_channels)):
+            pattern, clean = reset_channels[i]
+            mlead = mleads[i]
+            chan, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = pattern).first())
+            ts3conn.ts3exec(lambda tsc: tsc.exec_("channeledit", cid = chan.get("cid"), channel_name="%s%s" % (clean, mleads.join(", "))))
+
+    def setupresetroster(self, ts3conn, date):
+        channels = [(p,c.replace("$DATE", date)) for p,c in  Config.reset_channels]
+        for pattern, clean in channels:
+            chan, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = pattern).first(), signal_exception_handler)
+            if ts3qe and ts3qe.resp.error["id"] == "1281":
+                # empty result set
+                # no channel found for that pattern
+                TS3Auth.log("No channel found with pattern '%s'. Skipping." % (pattern,))
+            else:
+                _, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeledit", cid = chan.get("cid"), channel_name = clean), signal_exception_handler)                     
+                if ts3qe and ts3qe.resp.error["id"] == "771":
+                    # channel name already in use
+                    # probably not a bug (channel still unused), but can be a config problem
+                    TS3Auth.log("Channel '%s' already exists. This is probably not a problem. Skipping." % (clean,))        
+
     def client_message_handler(self, ipcserver, clientsocket, message):
         mtype = self.try_get(message, "type", lower = True)
         mcommand = self.try_get(message, "command", lower = True)
@@ -421,31 +444,13 @@ class Bot:
             # POST commands
             if mcommand == "setupresetroster":
                 date = margs["date"]
-                channels = [(p,c.replace("$DATE", date)) for p,c in  Config.reset_channels]
-                for pattern, clean in channels:
-                    chan, ts3qe = ipcserver.ts_connection.ts3exec(lambda tsc: tsc.query("channelfind", pattern = pattern).first(), signal_exception_handler)
-                    if ts3qe and ts3qe.resp.error["id"] == "1281":
-                        # empty result set
-                        # no channel found for that pattern
-                        TS3Auth.log("No channel found with pattern '%s'. Skipping." % (pattern,))
-                    else:
-                        _, ts3qe = ipcserver.ts_connection.ts3exec(lambda tsc: tsc.exec_("channeledit", cid = chan.get("cid"), channel_name = clean), signal_exception_handler)                     
-                        if ts3qe and ts3qe.resp.error["id"] == "771":
-                            # channel name already in use
-                            # probably not a bug (channel still unused), but can be a config problem
-                            TS3Auth.log("Channel '%s' already exists. This is probably not a problem. Skipping." % (clean,))
+                self.setupresetroster(ipcserver.ts_connection, date)
             if mcommand == "setresetroster":
                 mred = self.try_get(message, "rbl", default = [])
                 mgreen = self.try_get(message, "gbl", default = [])
                 mblue = self.try_get(message, "bbl", default = [])
                 mebg = self.try_get(message, "ebg", default = [])
-                mleads = (mred, mgreen, mblue, mebg) # keep RGB order! EBG as last!
-                for i in range(len(reset_channels)):
-                    patter, clean = reset_channels[i]
-                    mlead = mleads[i]
-                    chan, ex = ipcserver.ts_connection.ts3exec(lambda tsc: tsc.query("channelfind", pattern = pattern).first())
-                    ipcserver.ts_connection.ts3exec(lambda tsc: tsc.exec_("channeledit", cid = chan.get("cid"), channel_name="%s%s" % (clean, mleads.join(", "))))
-               
+                setresetroster(ipcserver.ts_connection, mred, mgreen, mblue, mebg)
 
     # Handler that is used every time an event (message) is received from teamspeak server
     def message_event_handler(self, event):
@@ -644,7 +649,7 @@ class User(object):
                 self._client_id, ex = self.ts_conn.ts3exec(lambda t: t.query("clientgetids", cluid = self._unique_id).first().get("clid"))
             elif self._ts_db_id is not None:
                 self._unique_id, ex = self.ts_conn.ts3exec(lambda t: t.query("clientgetnamefromdbid", cldbid = self._ts_db_id).first().get("cluid"))
-                self._client_id, ex = self.ts_conn.tts3execsc(lambda t: t.query("clientgetids", cluid = self._unique_id).first().get("clid"))
+                self._client_id, ex = self.ts_conn.ts3exec(lambda t: t.query("clientgetids", cluid = self._unique_id).first().get("clid"))
             else:
                 raise Error("Client ID can not be retrieved")
         return self._client_id  
