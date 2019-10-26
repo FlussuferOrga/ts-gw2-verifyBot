@@ -8,7 +8,7 @@ class Server(object):
     '''
     Server for broadcasting messages.
     '''
-    def __init__(self, port, ts_connection, max_clients = 5, timeout = 10, terminator_symbol = "\n", client_message_handler = lambda c,m: False):
+    def __init__(self, port, ts_connection, max_clients = 5, timeout = 10, terminator_symbol = "\n", client_message_handler = lambda c,m: False, local_only = True):
         self.socket = socket.socket()
         self.port = port
         self.ts_connection = ts_connection.copy()
@@ -20,6 +20,7 @@ class Server(object):
         self.broadcast_lock = threading.Lock()
         self.handle_message_lock = threading.Lock()
         self.clients = []
+        self.local_only = local_only
 
     def send(self, cladr, message):
         '''
@@ -63,7 +64,7 @@ class Server(object):
         self.broadcast_lock.release() 
 
     def run(self):
-        self.socket.bind(("", self.port))
+        self.socket.bind(("127.0.0.1" if self.local_only else "", self.port))
         self.socket.listen(self.max_clients)
         self.socket.settimeout(self.timeout)
         self.clients = []
