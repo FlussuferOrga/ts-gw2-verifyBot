@@ -410,28 +410,28 @@ class Bot:
         v = typer(dictionary[key] if key in dictionary else default)
         return v.lower() if lower and isinstance(v, str) else v 
 
-    def setresetroster(self, ts3conn, red = [], green = [], blue = [], ebg = []):
-        leads = (red, green, blue, ebg) # keep RGB order! EBG as last!
-        for i in range(len(reset_channels)):
-            pattern, clean = reset_channels[i]
-            mlead = mleads[i]
-            chan, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = pattern).first())
-            ts3conn.ts3exec(lambda tsc: tsc.exec_("channeledit", cid = chan.get("cid"), channel_name="%s%s" % (clean, mleads.join(", "))))
+    def setresetroster(self, ts3conn, date, red = [], green = [], blue = [], ebg = []):
+        leads = ([], red, green, blue, ebg) # keep RGB order! EBG as last! Pad first slot (header) with empty list
 
-    def setupresetroster(self, ts3conn, date):
-        channels = [(p,c.replace("$DATE", date)) for p,c in  Config.reset_channels]
-        for pattern, clean in channels:
+        channels = [(p,c.replace("$DATE", date)) for p,c in Config.reset_channels]
+        for i in range(len(channels)):
+            pattern, clean = channels[i]
+            lead = leads[i]
             chan, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = pattern).first(), signal_exception_handler)
-            if ts3qe and ts3qe.resp.error["id"] == "1281":
-                # empty result set
-                # no channel found for that pattern
-                TS3Auth.log("No channel found with pattern '%s'. Skipping." % (pattern,))
+            if ts3qe:
+                if hasattr(ts3qe,"resp") and ts3qe.resp.error["id"] == "1281":
+                    # empty result set
+                    # no channel found for that pattern
+                    TS3Auth.log("No channel found with pattern '%s'. Skipping." % (pattern,))
+                else:
+                    TS3Auth.log("Unexpected exception while trying to find a channel: %s" % (ts3qe,))
             else:
-                _, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeledit", cid = chan.get("cid"), channel_name = clean), signal_exception_handler)                     
+                newname = "%s%s" % (clean, ", ".join(lead))
+                _, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeledit", cid = chan.get("cid"), channel_name = newname), signal_exception_handler)                     
                 if ts3qe and ts3qe.resp.error["id"] == "771":
                     # channel name already in use
                     # probably not a bug (channel still unused), but can be a config problem
-                    TS3Auth.log("Channel '%s' already exists. This is probably not a problem. Skipping." % (clean,))        
+                    TS3Auth.log("Channel '%s' already exists. This is probably not a problem. Skipping." % (newname,))        
 
     def client_message_handler(self, ipcserver, clientsocket, message):
         mtype = self.try_get(message, "type", lower = True)
@@ -442,15 +442,13 @@ class Bot:
 
         if mtype == "post":
             # POST commands
-            if mcommand == "setupresetroster":
-                date = margs["date"]
-                self.setupresetroster(ipcserver.ts_connection, date)
             if mcommand == "setresetroster":
-                mred = self.try_get(message, "rbl", default = [])
-                mgreen = self.try_get(message, "gbl", default = [])
-                mblue = self.try_get(message, "bbl", default = [])
-                mebg = self.try_get(message, "ebg", default = [])
-                setresetroster(ipcserver.ts_connection, mred, mgreen, mblue, mebg)
+                mdate = self.try_get(margs, "date", default = "dd.mm.yyyy")
+                mred = self.try_get(margs, "rbl", default = [])
+                mgreen = self.try_get(margs, "gbl", default = [])
+                mblue = self.try_get(margs, "bbl", default = [])
+                mebg = self.try_get(margs, "ebg", default = [])
+                self.setresetroster(ipcserver.ts_connection, mdate, mred, mgreen, mblue, mebg)
 
     # Handler that is used every time an event (message) is received from teamspeak server
     def message_event_handler(self, event):
@@ -682,14 +680,20 @@ class CommanderChecker(Ticker):
             return command.all()            
 
         acs, ts3qe = self.ts3bot.ts_connection.ts3exec(retrieve_commanders, signal_exception_handler)
-        if ts3qe:
-            if ts3qe.resp.error["id"] != "1281":
+        if ts3qe: # check for .resp, could by another exception type
+            if ts3qe.resp is not None:
+                if ts3qe.resp.error["id"] != "1281":
+                    print(ts3qe.resp.error["id"])
+                    print(type(ts3qe.resp.error["id"]))
+                    print(ts3qe.resp.error["id"] == "1281")
+                    # 1281 is "database empty result set", which is an expected error
+                    # if not a single user currently wears a tag.
+                    TS3Auth.log("Error while trying to resolve active commanders: %s." % (str(ts3qe),))
+            else:
+                print(ts3qe)
+                print(ts3qe.resp)
                 print(ts3qe.resp.error["id"])
-                print(type(ts3qe.resp.error["id"]))
-                print(ts3qe.resp.error["id"] == "1281")
-                # 1281 is "database empty result set", which is an expected error
-                # if not a single user currently wears a tag.
-                TS3Auth.log("Error while trying to resolve active commanders: %s." % (str(ts3qe),))
+                print(ts3qe.resp.error)
         else:
             active_commanders_entries = [(c, self.ts3bot.getUserDBEntry(self.ts3bot.getTsUniqueID(c.get("cldbid")))) for c in acs]
             for ts_entry, db_entry in active_commanders_entries:

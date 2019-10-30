@@ -35,7 +35,7 @@ while bot_loop_forever:
 
             ipcthread = Thread(target = IPCS.run)
             ipcthread.daemon = True
-            ipcthread.start()
+            ipcthread.start() 
             TS3Auth.log ("BOT loaded into server (%s) as %s (%s). Nickname '%s'" %(Config.server_id, BOT.name, BOT.client_id, BOT.nickname))
 
             # Find the verify channel
@@ -111,7 +111,7 @@ while bot_loop_forever:
 
     except (ConnectionRefusedError, ts3.query.TS3TransportError):
         TS3Auth.log("Unable to reach teamspeak server..trying again in %s seconds..." % Config.bot_sleep_conn_lost)
-        time.sleep(bot_sleep_conn_lost)
+        time.sleep(Config.bot_sleep_conn_lost)
     except (KeyboardInterrupt, SystemExit):
         bot_loop_forever = False
         sys.exit(0)
