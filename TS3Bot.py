@@ -61,12 +61,13 @@ class ThreadsafeTSConnection(object):
         self.ts_connection = ts3.query.TS3ServerConnection(self.uri) 
         self.lock = Lock()
         if keepalive_interval is not None:
+            print("will keep alive!")
             schedule.every(self._keepalive_interval).seconds.do(lambda: self.ts3exec(lambda tc: tc.send_keepalive))
         if server_id is not None:
             self.ts3exec(lambda tc: tc.exec_("use", sid=server_id))
         if bot_nickname is not None:
-            #self.force_rename(bot_nickname)
-            self.gentle_rename(bot_nickname)
+            self.force_rename(bot_nickname)
+            #self.gentle_rename(bot_nickname)
 
     def __enter__(self):
         return self
@@ -418,17 +419,18 @@ class Bot:
             pattern, clean = channels[i]
             lead = leads[i]
             chan, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = pattern).first(), signal_exception_handler)
-            if ts3qe:
+            if ts3qe is not None:
                 if hasattr(ts3qe,"resp") and ts3qe.resp.error["id"] == "1281":
                     # empty result set
                     # no channel found for that pattern
                     TS3Auth.log("No channel found with pattern '%s'. Skipping." % (pattern,))
                 else:
                     TS3Auth.log("Unexpected exception while trying to find a channel: %s" % (ts3qe,))
+                    raise ts3qe
             else:
                 newname = "%s%s" % (clean, ", ".join(lead))
                 _, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeledit", cid = chan.get("cid"), channel_name = newname), signal_exception_handler)                     
-                if ts3qe and ts3qe.resp.error["id"] == "771":
+                if ts3qe is not None and ts3qe.resp.error["id"] == "771":
                     # channel name already in use
                     # probably not a bug (channel still unused), but can be a config problem
                     TS3Auth.log("Channel '%s' already exists. This is probably not a problem. Skipping." % (newname,))        
@@ -483,7 +485,7 @@ class Bot:
                         self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_hide_guild_success")))
                     except sqlite3.IntegrityError:
                         self.db_conn.rollback()
-                        TS3Auth.log("Failed. The group probably doesn't exist or the user is already part of the group.")
+                        TS3Auth.log("Failed. The group probably doesn't exist or the user is already hiding that group.")
                         self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_hide_guild_unknown")))
 
                 elif cmd == "unhideguild":
