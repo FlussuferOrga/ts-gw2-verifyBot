@@ -32,6 +32,8 @@ def signal_exception_handler(ex):
 ## Basic Classes
 #######################################
 class ThreadsafeTSConnection(object):
+    RETRIES = 3
+
     @property
     def uri(self):
         return "telnet://%s:%s@%s:%s" % (self._user, self._password, self._host, str(self._port))
@@ -58,22 +60,33 @@ class ThreadsafeTSConnection(object):
         self._keepalive_interval = int(keepalive_interval)
         self._server_id = server_id
         self._bot_nickname = bot_nickname
-        self.ts_connection = ts3.query.TS3ServerConnection(self.uri) 
         self.lock = Lock()
-        if keepalive_interval is not None:
-            print("will keep alive!")
-            schedule.every(self._keepalive_interval).seconds.do(lambda: self.ts3exec(lambda tc: tc.send_keepalive))
-        if server_id is not None:
-            self.ts3exec(lambda tc: tc.exec_("use", sid=server_id))
-        if bot_nickname is not None:
-            self.force_rename(bot_nickname)
-            #self.gentle_rename(bot_nickname)
+        self.ts_connection = None # done in init()
+        self.init()
+
+    def init(self):
+        if self.ts_connection is not None:
+            try:
+                self.ts_connection.close()
+            except:
+                pass # may already be closed, doesn't matter.
+        self.ts_connection = ts3.query.TS3ServerConnection(self.uri) 
+        if self._keepalive_interval is not None:
+            schedule.cancel_job(self.keepalive) # to avoid accumulating keepalive calls during re-inits
+            schedule.every(self._keepalive_interval).seconds.do(self.keepalive)
+        if self._server_id is not None:
+            self.ts3exec(lambda tc: tc.exec_("use", sid=self._server_id))
+        if self._bot_nickname is not None:
+            self.force_rename(self._bot_nickname)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+    def keepalive(self):
+        self.ts_connection.send_keepalive()
 
     def ts3exec(self, handler, exception_handler = lambda ex: default_exception_handler(ex)): #eh = lambda ex: print(ex)):
         '''
@@ -101,13 +114,22 @@ class ThreadsafeTSConnection(object):
 
         returns a tuple with the results of the two handlers (result first, exception result second).
         '''
-        res = None
-        exres = None
         with self.lock:
-            try:
-                res = handler(self.ts_connection)
-            except Exception as ex:
-                exres = exception_handler(ex)
+            failed = True
+            fails = 0
+            res = None
+            exres = None
+            while failed and fails < ThreadsafeTSConnection.RETRIES:
+                failed = False
+                try:
+                    res = handler(self.ts_connection)
+                except ts3.query.TS3TransportError:
+                    failed = True
+                    fails += 1
+                    TS3Auth.log("Critical error on transport level! Attempt %s to restart the connection and send the command again." % (str(fails),))
+                    self.init()
+                except Exception as ex:
+                    exres = exception_handler(ex)
         return (res, exres)
 
     def close(self):
@@ -439,8 +461,9 @@ class Bot:
         mtype = self.try_get(message, "type", lower = True)
         mcommand = self.try_get(message, "command", lower = True)
         margs = self.try_get(message, "args", typer = lambda a: dict(a), default = {})
+        mid = self.try_get(message, "message_id", typer = lambda a: int(a), default = -1)
 
-        print("[%s] %s" % (mtype, mcommand))
+        # print("[%s] %s" % (mtype, mcommand))
 
         if mtype == "post":
             # POST commands

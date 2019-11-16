@@ -3,3 +3,5 @@ gw2api
 requests==2.20.0
 schedule==0.3.2
 ts3>=2.0.0b2
+deprecation
+Twisted
