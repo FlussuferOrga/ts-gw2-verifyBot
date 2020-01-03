@@ -57,7 +57,7 @@ class AuthRequest:
             self.getAccountDetails()
             log("%s %s Account loaded for %s" %(h_hdr,h_acct,self.user))
             self.authCheck()
-        except:
+        except Exception as ex:
             log('%s %s Possibly bad API Key. Error obtaining account details for %s. (Does the API key allow "account" queries?)' %(h_hdr,h_acct,self.user))
 
     def getAccountDetails(self):
@@ -86,9 +86,12 @@ class AuthRequest:
         self.guild_tags = []
         self.guild_names = []
         for guild_id in self.guilds:
-            ginfo = gw2api.guild_details(guild_id)
-            self.guild_tags.append(ginfo.get('tag'))
-            self.guild_names.append(ginfo.get('guild_name'))
+            try:
+                ginfo = gw2api.guild_details(guild_id)
+                self.guild_tags.append(ginfo.get('tag'))
+                self.guild_names.append(ginfo.get('guild_name'))
+            except Exception as ex:
+                log("Exception while trying to obtain details for guild '%s': %s" % (guild_id, str(ex)))
 
     def authCheck(self):
         log("%s %s Running auth check for %s" %(h_hdr,h_auth,self.name))
@@ -100,7 +103,7 @@ class AuthRequest:
                 self.success = True
                 log("%s %s Auth Success for user %s." %(h_hdr,h_auth,self.user))
             else:
-                log("%s %s User %s is on the correct server but does not have any level %s characters." %(h_hdr,h_auth,self.user,self.users_server))
+                log("%s %s User %s is on the correct server %s but does not have any level %s characters." %(h_hdr,h_auth,self.user,self.users_server,self.required_level))
         else:
             log("%s %s Authentication Failed with:\n\n    User Gave:\n        ~USER ID: %s\n          ~Server: %s\n\n     Expected:\n         ~USER ID: %s\n          ~Server: %s\n\n" %(h_hdr,h_auth,self.user,self.users_server,self.name,self.required_servers))
         return self.success

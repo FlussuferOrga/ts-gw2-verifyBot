@@ -251,6 +251,16 @@ class Bot:
         except ts3.query.TS3QueryError as err:
             TS3Auth.log("BOT [removePermissions]: Failed; %s" %err) #likely due to bad client id
 
+    def removePermissionsByGW2Account(self, gw2account):
+        tsDbIds = self.db_cursor.execute("SELECT ts_db_id FROM users WHERE account_name = ?", (gw2account,)).fetchall()
+        for tdi, in tsDbIds:
+            self.removePermissions(tdi)
+            TS3Auth.log("Removed permissions from %s" % (tdi,))
+        self.db_cursor.execute("DELETE FROM users WHERE account_name = ?", (gw2account,))
+        changes = self.db_cursor.execute("SELECT changes()").fetchone()[0];
+        self.db_conn.commit()
+        return changes
+
     def getUserDBEntry(self, client_unique_id):
         '''
         Retrieves the DB entry for a unique client ID.
@@ -457,13 +467,19 @@ class Bot:
                     # probably not a bug (channel still unused), but can be a config problem
                     TS3Auth.log("Channel '%s' already exists. This is probably not a problem. Skipping." % (newname,))        
 
+        self.db_cursor.execute("DELETE FROM users WHERE account_name = ?", (gw2account,))
+        changes = self.db_cursor.execute("SELECT changes()").fetchone()[0];
+        self.db_conn.commit()
+        return changes
+
     def client_message_handler(self, ipcserver, clientsocket, message):
         mtype = self.try_get(message, "type", lower = True)
         mcommand = self.try_get(message, "command", lower = True)
         margs = self.try_get(message, "args", typer = lambda a: dict(a), default = {})
         mid = self.try_get(message, "message_id", typer = lambda a: int(a), default = -1)
 
-        # print("[%s] %s" % (mtype, mcommand))
+
+        print("[%s] %s" % (mtype, mcommand))
 
         if mtype == "post":
             # POST commands
@@ -474,6 +490,13 @@ class Bot:
                 mblue = self.try_get(margs, "bbl", default = [])
                 mebg = self.try_get(margs, "ebg", default = [])
                 self.setresetroster(ipcserver.ts_connection, mdate, mred, mgreen, mblue, mebg)
+        if mtype == "delete":
+            # DELETE commands
+            if mcommand == "user":
+                mgw2account = self.try_get(margs,"gw2account", default = "")
+                TS3Auth.log("Received request to delete user '%s' from the TS registration database." % (mgw2account,))
+                changes = self.removePermissionsByGW2Account(mgw2account)
+                clientsocket.respond(mid, mcommand, {"deleted": changes})
 
     # Handler that is used every time an event (message) is received from teamspeak server
     def message_event_handler(self, event):
@@ -626,6 +649,12 @@ class User(object):
 
         if all(x is None for x in [unique_id, ts_db_id, client_id]):
             raise Error("At least one ID must be non-null")      
+
+    def __repr__(self):
+        return str(self)
+
+    def __str__(self):
+        return "User[unique_id: %s, ts_db_id: %s, client_id: %s]" % (self.unique_id, self.ts_db_id, self._client_id)
 
     @property
     def current_channel(self):

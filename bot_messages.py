@@ -112,7 +112,7 @@ class German(Locale):
     self.set("bot_msg_fail",  "Leider hat die Freischaltung nicht funktioniert. Bitte einen Teamspeak Administrator die Logs zu prüfen.\n~ Wahrscheinlich ein ungültiger API-Schlüssel oder falsche API-Einstellungen. (Der API-Schlüssel braucht die Berechtigungen 'account' und 'character' )"+self.get("bot_msg_note"))
 
     #Message sent for client TS ID limit reached (trying to access Teamspeack from a second computer after having authenticated on a prior machine
-    self.set("bot_msg_limit_Hit", "Die Teamspeak Admins haben ein Limit gesetzt, auf wie vielen Geräten du dich mit deinem Guild Wars 2 Account freischalten kannst. Du bist bereits von einem anderen Gerät aus registriert (oder du hat Teamspeak neu installiert, wodurch deine Teamspeak ID für diesen Servert zurückgesetzt wurde).")
+    self.set("bot_msg_limit_Hit", "Die Teamspeak Admins haben ein Limit gesetzt, auf wie vielen Geräten du dich mit deinem Guild Wars 2 Account freischalten kannst. Du bist bereits von einem anderen Gerät aus registriert (oder du hat Teamspeak neu installiert, wodurch deine Teamspeak ID für diesen Server zurückgesetzt wurde).")
 
     #Message sent to someone who is already verified but asks to be verified
     self.set("bot_msg_alrdy_verified", "Es scheint, als seist du bereits freigeschaltet! Wieso quälst du mich sooo /cry")

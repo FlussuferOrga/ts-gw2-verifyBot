@@ -90,6 +90,17 @@ class TwistedServer(TCPServer):
                 # HTTP "Bad Request" code
                 self.factory.server.send(self, "400")
 
+        def send(self, message):
+            self.transport.write(json.dumps(message).encode("utf-8"))
+
+        def respond(self, mid, command, response): 
+            self.send({
+                    "type": "response",
+                    "message_id": mid,
+                    "command": command,
+                    "response": response                    
+                })
+
     class BotgartServerFactory(ServerFactory):
         def __init__(self, server):
             self.clients = []
@@ -115,7 +126,7 @@ class TwistedServer(TCPServer):
         reactor.run(installSignalHandlers=False) # or else python complains about not running in the main thread
 
     def send(self, client, message):
-        client.transport.write(json.dumps(message).encode("utf-8"))
+        client.send(message)
 
     def broadcast(self, message):
         for c in self.factory.clients:
