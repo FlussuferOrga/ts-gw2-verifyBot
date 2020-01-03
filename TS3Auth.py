@@ -81,6 +81,7 @@ class AuthRequest:
 
         # Players Guilds (by ID)
         self.guilds = self.details_dump.get('guilds')
+        self.guilds_error = False
 
         # Players Guild Tags (Seems to order it by oldest guild first)
         self.guild_tags = []
@@ -92,6 +93,7 @@ class AuthRequest:
                 self.guild_names.append(ginfo.get('guild_name'))
             except Exception as ex:
                 log("Exception while trying to obtain details for guild '%s': %s" % (guild_id, str(ex)))
+                self.guilds_error = True
 
     def authCheck(self):
         log("%s %s Running auth check for %s" %(h_hdr,h_auth,self.name))

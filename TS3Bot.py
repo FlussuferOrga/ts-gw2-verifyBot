@@ -331,6 +331,9 @@ class Bot:
 
     #def updateGuildTags(self, client_db_id, auth):
     def updateGuildTags(self, user, auth):
+        if auth.guilds_error:
+            TS3Auth.log("Did not update guild groups for player '%s', as loading the guild groups caused an error." % (auth.name,))
+            return
         uid = user.unique_id # self.getTsUniqueID(client_db_id)
         client_db_id = user.ts_db_id
         ts_groups = {sg.get("name"):sg.get("sgid") for sg in self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergrouplist").all())[0]}
