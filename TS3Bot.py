@@ -470,11 +470,6 @@ class Bot:
                     # probably not a bug (channel still unused), but can be a config problem
                     TS3Auth.log("Channel '%s' already exists. This is probably not a problem. Skipping." % (newname,))        
 
-        self.db_cursor.execute("DELETE FROM users WHERE account_name = ?", (gw2account,))
-        changes = self.db_cursor.execute("SELECT changes()").fetchone()[0];
-        self.db_conn.commit()
-        return changes
-
     def client_message_handler(self, ipcserver, clientsocket, message):
         mtype = self.try_get(message, "type", lower = True)
         mcommand = self.try_get(message, "command", lower = True)
