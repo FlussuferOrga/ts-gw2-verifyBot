@@ -10,9 +10,13 @@ import datetime #for date strings
 import schedule # Allows auditing of users every X days
 from bot_messages import * #Import all Static messages the BOT may need
 from threading import Thread, Lock, currentThread
+import requests # to download guild emblems
+import urllib.parse # for fetching guild emblems urls
 import sys
 import ipc
 import traceback
+import binascii # crc32
+from StringShortener import StringShortener
 
 #######################################
 def default_exception_handler(ex):
@@ -463,12 +467,236 @@ class Bot:
                     TS3Auth.log("Unexpected exception while trying to find a channel: %s" % (ts3qe,))
                     raise ts3qe
             else:
-                newname = "%s%s" % (clean, ", ".join(lead))
+                #newname = "%s%s" % (clean, ", ".join(lead))
+                TS3_MAX_SIZE_CHANNEL_NAME = 40
+                shortened = StringShortener(TS3_MAX_SIZE_CHANNEL_NAME - len(clean)).shorten(lead)
+                newname = newname = "%s%s" % (clean, ", ".join(shortened))
                 _, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeledit", cid = chan.get("cid"), channel_name = newname), signal_exception_handler)                     
                 if ts3qe is not None and ts3qe.resp.error["id"] == "771":
                     # channel name already in use
                     # probably not a bug (channel still unused), but can be a config problem
-                    TS3Auth.log("Channel '%s' already exists. This is probably not a problem. Skipping." % (newname,))        
+                    TS3Auth.log("Channel '%s' already exists. This is probably not a problem. Skipping." % (newname,))      
+
+    def removeGuild(self, ts3conn, name, tag, groupname):
+        '''
+        Removes a guild from the TS. That is:
+        - deletes their guild channel and all their subchannels by force
+        - removes the group from TS by force
+        - remove the auto-assignment for that group from the DB
+
+        ts3conn: TS3 connection
+        name: name of the guild as in the game
+        tag: tag the guild uses
+        groupname: group that should be used for that guild. Useful if the tag is already taken
+        '''
+
+        # FROM DB 
+        TS3Auth.log("Deleting guild '%s' from DB." % (name,))
+        self.db_cursor.execute("DELETE FROM guilds WHERE guild_name = ?", (name,))
+        self.db_conn.commit()
+        
+        # CHANNEL
+        channelname = "%s [%s]" % (name, tag)
+        channel, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = channelname).first(), signal_exception_handler)
+        if channel is None:
+            TS3Auth.log("No channel '%s' to delete." % (channelname,))
+        else:
+            TS3Auth.log("Deleting channel '%s'." % (channelname,))
+            ts3conn.ts3exec(lambda tsc: tsc.exec_("channeldelete", cid = channel.get("cid"), force = 1))
+
+        groups, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergrouplist").all())
+        group = next((g for g in groups if g.get("name") == groupname), None)
+        if group is None:
+            TS3Auth.log("No group '%s' to delete." % (groupname,))
+        else:
+            TS3Auth.log("Deleting group '%s'." % (groupname,))
+            ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupdel", sgid = group.get("sgid"), force = 1))
+
+    def createGuild(self, ts3conn, name, tag, groupname, contacts):
+        '''
+        Creates a guild in the TS.
+        - retrieves and uploads their emblem as icon
+        - creates guild channel with subchannels as read from the config with the icon
+        - creates a guild group with the icon and appropriate permissions
+        - adds in automatic assignment of the guild group upon re-verification
+        - adds the contact persons as initial channel description
+        - gives the contact role to the contact persons if they can be found in the DB
+
+        ts3conn: TS3 connection
+        name: name of the guild as is seen ingame
+        tag: their tag
+        groupname: group that should be used for them. Useful if the tag is already taken
+        contacts: list of account names (Foo.1234) that should be noted down as contact and receive the special role for the new channel
+        '''
+        channelname = "%s [%s]" % (name, tag)
+        description = "[b]Contact[/b]:\n%s" % ("\n".join(["  %s" % c for c in contacts]))
+        icon_id = binascii.crc32(tag.encode('utf8'))
+        icon_url = "https://guilds.gw2w2w.com/guilds/%s/50.svg" % (urllib.parse.quote(name.replace(" ", "-")),)
+        icon_server_path = "/icon_%s" % (icon_id,)
+
+        #############################################
+        # CHECK IF GROUPS OR CHANNELS ALREADY EXIST #
+        #############################################
+        groups, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergrouplist").all(), default_exception_handler)
+        group = next((g for g in groups if g.get("name") == groupname), None)
+        if group is not None:
+            # group already exists!
+            pass 
+
+        dbgroups = self.db_cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group = ?", (groupname,)).fetchall()
+        if(len(dbgroups) > 0):
+            # groups exists in DB!
+            pass
+
+        channel, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = channelname).first(), signal_exception_handler)
+        if channel is not None:
+            # channel already exists!
+            pass 
+
+        channel, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = channelname).first(), signal_exception_handler)
+        if channel is not None:
+            # channel already exists!
+            pass 
+        
+        parent, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = Config.guilds_parent_channel).first(), signal_exception_handler)
+        if parent is None:
+            # parent channel does not exist!
+            pass 
+
+        #########################################
+        # RETRIEVE AND UPLOAD GUILD EMBLEM ICON #
+        #########################################
+        icon_file_name = "%s_icon.svg" % (tag,)
+        with open(icon_file_name, "wb") as fh:
+            icon = requests.get(icon_url)
+            fh.write(icon.content)
+        with open(icon_file_name, "rb") as fh:
+            try: 
+                upload = ts3.filetransfer.TS3FileTransfer(ts3conn.ts_connection)
+                res = upload.init_upload(fh, icon_server_path, 0)
+            except KeyError as ke:
+                print(str(ke))
+                if not str(ke).find("'port'"): # only way I've found to check what attribute is missing...
+                    raise ke 
+                else:
+                    # if we get a KeyError for 'port', something has gone wrong earlier down the line,
+                    # which the TS3 library failed to check. Passing an image that is too big has been
+                    # a problem during development.
+                    TS3Auth.log("Error while trying to upload the guild icon for guild %s [%s]. It has a size of %s, is that maybe more than the admitted file size?" % (name, tag, os.stat(icon_file_name).st_size))
+        os.remove(icon_file_name)
+
+        ##################################
+        # CREATE CHANNEL AND SUBCHANNELS #
+        ##################################
+        info, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelinfo", cid = parent["cid"]).all(), signal_exception_handler)
+        # assert channel and group both exist and parent channel is available
+        cinfo, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate"
+                                                , channel_name = channelname
+                                                , channel_description = description
+                                                , cpid = parent["cid"]
+                                                , channel_flag_permanent = 1
+                                                , channel_needed_join_power = 50
+                                                , channel_needed_subscribe_power = 50
+                                                , channel_needed_modify_power = 50
+                                                , channel_needed_delete_power = 75
+                                                , channel_maxclients = 0
+                                                , channel_flag_maxclients_unlimited = 0)
+                                    .first(), signal_exception_handler)
+
+        print(cinfo.get("cid"))
+        _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeladdperm"
+                                                        , cid = cinfo.get("cid")
+                                                        , permsid = "i_icon_id"
+                                                        , permvalue = icon_id
+                                                        , permnegated = 0
+                                                        , permskip = 0)
+                                , signal_exception_handler)
+
+        for c in Config.guild_sub_channels:
+            # FIXME: error check
+            x,y = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate"
+                                                            , channel_name = c
+                                                            , cpid = cinfo.get("cid")
+                                                            , channel_flag_permanent = 1)
+                                                .first(), signal_exception_handler)
+
+        #######################
+        # CREATE SERVER GROUP #
+        #######################
+        resp, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergroupadd", name = groupname).first(), signal_exception_handler)
+        if ex is not None and ex.resp.error["id"] == "1282":
+            TS3Auth.log("Duplication error while trying to create the group '%s' for the guild %s [%s]." % (groupname, name, tag))
+
+        def servergroupaddperm(sgid, permsid, permvalue):
+                    return ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddperm"
+                                                        , sgid = sgid
+                                                        , permsid = permsid
+                                                        , permvalue = permvalue
+                                                        , permnegated = 0
+                                                        , permskip = 0)
+                                    , signal_exception_handler)
+
+        x,ex = servergroupaddperm(resp.get("sgid"), "i_icon_id", icon_id)
+        x,ex = servergroupaddperm(resp.get("sgid"), "b_group_is_permanent", icon_id)
+        x,ex = servergroupaddperm(resp.get("sgid"), "i_group_show_name_in_tree", 1)
+        
+
+        ###################
+        # CREATE DB GROUP #
+        ###################
+        self.db_cursor.execute("INSERT INTO guilds(ts_group, guild_name) VALUES(?,?)", (groupname, name))
+        self.db_conn.commit()
+
+        groups.append({"sgid": resp.get("sgid"), "name": groupname}) # the newly created group has to be added to properly iterate over the guild groups
+        guildgroups = [g[0] for g in self.db_cursor.execute("SELECT ts_group FROM guilds ORDER BY ts_group").fetchall()]
+        for i in range(len(guildgroups)):
+            g = next((g for g in groups if g["name"] == guildgroups[i]), None)
+            if g is None:
+                # error! Group deleted from TS, but not from DB!
+                pass
+            # sort guild groups to have users grouped by their guild tag alphabetically
+            x,ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddperm"
+                                                        , sgid = g.get("sgid")
+                                                        , permsid = "i_client_talk_power"
+                                                        , permvalue = Config.guilds_maximum_talk_power - i
+                                                        , permnegated = 0
+                                                        , permskip = 0)
+                                    , signal_exception_handler)
+
+            # sort guild groups to be ordered alphabetically in the context-menu
+            x,ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddperm"
+                                                        , sgid = g.get("sgid")
+                                                        , permsid = "i_group_sort_id"
+                                                        , permvalue = Config.guilds_minimum_sort_order + i
+                                                        , permnegated = 0
+                                                        , permskip = 0)
+                                    , signal_exception_handler)
+
+        ################
+        # ADD CONTACTS #
+        ################
+        cgroups, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelgrouplist").all(), default_exception_handler)
+        contactgroup = next((cg for cg in cgroups if cg.get("name") == Config.guild_contact_channel_group), None)
+        if contactgroup is None:        
+            pass
+        else:
+            for c in contacts:
+                accs = [row[0] for row in self.db_cursor.execute("SELECT ts_db_id FROM users WHERE lower(account_name) = lower(?)", (c,)).fetchall()]
+                for a in accs:
+                    errored = False
+                    try:
+                        u = User(ts3conn, unique_id = a)
+                        _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("setclientchannelgroup"
+                                                                , cid = cinfo.get("cid")
+                                                                , cldbid = u.ts_db_id
+                                                                , cgid = contactgroup.get("cgid"))
+                                        , signal_exception_handler)
+                        errored = ex is not None
+                    except Exception as ex:
+                        errored = True
+                    if errored:
+                        TS3Auth.log("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in guild channel for %s. Maybe the uid is not valid anymore." 
+                                    % (Config.guild_contact_channel_group, c, a, name))
 
     def client_message_handler(self, ipcserver, clientsocket, message):
         mtype = self.try_get(message, "type", lower = True)

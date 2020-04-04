@@ -70,6 +70,14 @@ reset_bgl_channel = ast.literal_eval(configs.get("reset roster", "reset_bgl_chan
 reset_ebg_channel = ast.literal_eval(configs.get("reset roster", "reset_ebg_channel"))
 reset_channels = (reset_top_level_channel, reset_rgl_channel, reset_ggl_channel, reset_bgl_channel, reset_ebg_channel) # convenience list
 
+# Create Guild
+guilds_parent_channel = configs.get("guilds", "guilds_parent_channel")
+guild_sub_channels = ast.literal_eval(configs.get("guilds", "guild_sub_channels"))
+guilds_minimum_talk_power = int(configs.get("guilds", "minimum_talk_power"))
+guilds_maximum_talk_power = int(configs.get("guilds", "maximum_talk_power"))
+guilds_minimum_sort_order = int(configs.get("guilds", "minimum_sort_order"))
+guild_contact_channel_group = configs.get("guilds", "guild_contact_channel_group")
+
 # Constants
 keepalive_interval = 60
 DEBUG = ast.literal_eval(configs.get("DEBUGGING","DEBUG")) # Debugging (on or off) True/False
