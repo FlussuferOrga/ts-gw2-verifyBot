@@ -566,6 +566,13 @@ class Bot:
         DUPLICATE_DB_ENTRY = 2
         DUPLICATE_TS_CHANNEL = 3
         MISSING_PARENT_CHANNEL = 4
+        INVALID_PARAMETERS = 5
+
+        if (name is None or tag is None or groupname is None or contacts is None
+            or len(name) < 3 or len(tag) < 2 or len(groupname) < 3
+            or not isinstance(contacts, list)
+            or len(contacts) < 1):
+            return INVALID_PARAMETERS
 
         ts3conn = self.ts_connection
         channelname = "%s [%s]" % (name, tag)
