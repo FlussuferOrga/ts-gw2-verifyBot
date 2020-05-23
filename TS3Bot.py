@@ -570,8 +570,7 @@ class Bot:
 
         if (name is None or tag is None or groupname is None or contacts is None
             or len(name) < 3 or len(tag) < 2 or len(groupname) < 3
-            or not isinstance(contacts, list)
-            or len(contacts) < 1):
+            or not isinstance(contacts, list)):
             return INVALID_PARAMETERS
 
         ts3conn = self.ts_connection
@@ -810,9 +809,9 @@ class Bot:
             if mcommand == "createguild":
                 mname = self.try_get(margs, "name", default = None)
                 mtag = self.try_get(margs, "tag", default = None)
-                mgroup = self.try_get(margs, "tsgroup", default = mtag)
-                mcontacts = self.try_get(margs, "name", default = [])
-                res = -1 if mname is None or mtag is None else self.createGuild(name, tag, groupname, contacts)
+                mgroupname = self.try_get(margs, "tsgroup", default = mtag)
+                mcontacts = self.try_get(margs, "contacts", default = [])
+                res = -1 if mname is None or mtag is None else self.createGuild(mname, mtag, mgroupname, mcontacts)
                 clientsocket.respond(mid, mcommand, {"status": res})                    
 
         if mtype == "delete":
