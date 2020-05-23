@@ -9,7 +9,7 @@ import os #operating system commands -check if files exist
 import datetime #for date strings
 import schedule # Allows auditing of users every X days
 from bot_messages import * #Import all Static messages the BOT may need
-from threading import Thread, Lock, currentThread
+from threading import Thread, Lock, RLock, currentThread
 import requests # to download guild emblems
 import urllib.parse # for fetching guild emblems urls
 import sys
@@ -35,6 +35,14 @@ def signal_exception_handler(ex):
 #######################################
 ## Basic Classes
 #######################################
+class ThreadsafeDBConnection(object):
+    def __init__(self, db_name):
+        self.db_name = db_name
+        self.conn = sqlite3.connect(db_name, check_same_thread = False, detect_types = sqlite3.PARSE_DECLTYPES)
+        self.cursor = self.conn.cursor()
+        self.lock = RLock()
+
+
 class ThreadsafeTSConnection(object):
     RETRIES = 3
 
@@ -176,7 +184,7 @@ class ThreadsafeTSConnection(object):
             else:
                 TS3Auth.log("Kicked user who was using the reserved registration bot name '%s'." % (nickname,))                  
             nickname = self.gentle_rename(nickname)
-            TS3Auth.log("Renamed self to '%s'." % (nickname,))               
+            TS3Auth.log("Renamed self to '%s'." % (nickname,))
         else:
             self.ts3exec(lambda tc: tc.exec_("clientupdate", client_nickname=nickname))
             TS3Auth.log("Forcefully renamed self to '%s'." % (nickname,))
@@ -216,10 +224,11 @@ class Bot:
             return False #User already verified
 
         #Check if user is authenticated in database and if so, re-adds them to the group
-        current_entries = self.db_cursor.execute("SELECT * FROM users WHERE ts_db_id=?",  (unique_client_id,)).fetchall()
-        if len(current_entries) > 0:
-            self.setPermissions(unique_client_id)
-            return False
+        with self.dbc.lock:
+            current_entries = self.cursor.execute("SELECT * FROM users WHERE ts_db_id=?",  (unique_client_id,)).fetchall()
+            if len(current_entries) > 0:
+                self.setPermissions(unique_client_id)
+                return False
         
         return True #User not verified
 
@@ -256,82 +265,86 @@ class Bot:
             TS3Auth.log("BOT [removePermissions]: Failed; %s" %err) #likely due to bad client id
 
     def removePermissionsByGW2Account(self, gw2account):
-        tsDbIds = self.db_cursor.execute("SELECT ts_db_id FROM users WHERE account_name = ?", (gw2account,)).fetchall()
-        for tdi, in tsDbIds:
-            self.removePermissions(tdi)
-            TS3Auth.log("Removed permissions from %s" % (tdi,))
-        self.db_cursor.execute("DELETE FROM users WHERE account_name = ?", (gw2account,))
-        changes = self.db_cursor.execute("SELECT changes()").fetchone()[0];
-        self.db_conn.commit()
-        return changes
+        with self.dbc.lock:
+            tsDbIds = self.dbc.cursor.execute("SELECT ts_db_id FROM users WHERE account_name = ?", (gw2account,)).fetchall()
+            for tdi, in tsDbIds:
+                self.removePermissions(tdi)
+                TS3Auth.log("Removed permissions from %s" % (tdi,))
+            self.dbc.cursor.execute("DELETE FROM users WHERE account_name = ?", (gw2account,))
+            changes = self.dbc.cursor.execute("SELECT changes()").fetchone()[0];
+            self.dbc.conn.commit()
+            return changes
 
     def getUserDBEntry(self, client_unique_id):
         '''
         Retrieves the DB entry for a unique client ID.
         Is either a dictionary of database-field-names to values, or None if no such entry was found in the DB.
         '''
-        entry = self.db_cursor.execute("SELECT * FROM users WHERE ts_db_id=?", (client_unique_id,)).fetchall()
-        if len(entry) < 1:
-            # user not registered
-            return None
-        entry = entry[0]
-        keys = self.db_cursor.description
-        assert len(entry) == len(keys)
-        return dict([(keys[i][0], entry[i]) for i in range(len(entry))])
+        with self.dbc.lock:
+            entry = self.dbc.cursor.execute("SELECT * FROM users WHERE ts_db_id=?", (client_unique_id,)).fetchall()
+            if len(entry) < 1:
+                # user not registered
+                return None
+            entry = entry[0]
+            keys = self.dbc.cursor.description
+            assert len(entry) == len(keys)
+            return dict([(keys[i][0], entry[i]) for i in range(len(entry))])
                     
     def getUserDatabase(self):
         if os.path.isfile(self.db_name):
-            self.db_conn = sqlite3.connect(self.db_name, check_same_thread = False, detect_types = sqlite3.PARSE_DECLTYPES)
-            self.db_cursor = self.db_conn.cursor()
+            self.dbc = ThreadsafeDBConnection(self.db_name) # sqlite3.connect(self.db_name, check_same_thread = False, detect_types = sqlite3.PARSE_DECLTYPES)
             TS3Auth.log ("Loaded User Database...")
         else:
-            self.db_conn = sqlite3.connect(self.db_name, check_same_thread = False, detect_types = sqlite3.PARSE_DECLTYPES)
-            self.db_cursor = self.db_conn.cursor()
+            self.dbc = ThreadsafeDBConnection(self.db_name) # sqlite3.connect(self.db_name, check_same_thread = False, detect_types = sqlite3.PARSE_DECLTYPES)
+            # self.dbc.cursor = self.dbc.conn.cursor()
             TS3Auth.log("No User Database found...created new database!")
-            # USERS
-            self.db_cursor.execute('''CREATE TABLE users(ts_db_id text primary key, account_name text, api_key text, created_date date, last_audit_date date)''')
-            # BOT INFO
-            self.db_cursor.execute('''CREATE TABLE bot_info(version text, last_succesful_audit date)''')
-            self.db_conn.commit()
-            self.db_cursor.execute('INSERT INTO bot_info (version, last_succesful_audit) VALUES (?,?)', (current_version, datetime.date.today(), ))
-            self.db_conn.commit()
-            # GUILD INFO
-            self.db_cursor.execute('''CREATE TABLE guilds(
-                            guild_id integer primary key autoincrement, 
-                            guild_name text UNIQUE,
-                            ts_group text UNIQUE)''')
-            self.db_conn.commit()
+            with self.dbc.lock:
+                # USERS
+                self.dbc.cursor.execute('''CREATE TABLE users(ts_db_id text primary key, account_name text, api_key text, created_date date, last_audit_date date)''')
+                # BOT INFO
+                self.dbc.cursor.execute('''CREATE TABLE bot_info(version text, last_succesful_audit date)''')
+                self.dbc.conn.commit()
+                self.dbc.cursor.execute('INSERT INTO bot_info (version, last_succesful_audit) VALUES (?,?)', (current_version, datetime.date.today(), ))
+                self.dbc.conn.commit()
+                # GUILD INFO
+                self.dbc.cursor.execute('''CREATE TABLE guilds(
+                                guild_id integer primary key autoincrement, 
+                                guild_name text UNIQUE,
+                                ts_group text UNIQUE)''')
+                self.dbc.conn.commit()
 
-            # GUILD IGNORES
-            self.db_cursor.execute('''CREATE TABLE guild_ignores(
-                            guild_ignore_id integer primary key autoincrement,
-                            guild_id integer,
-                            ts_db_id text,
-                            ts_name text,
-                            FOREIGN KEY(guild_id) REFERENCES guilds(guild_id),
-                            UNIQUE(guild_id, ts_db_id))''')
-            self.db_conn.commit()
+                # GUILD IGNORES
+                self.dbc.cursor.execute('''CREATE TABLE guild_ignores(
+                                guild_ignore_id integer primary key autoincrement,
+                                guild_id integer,
+                                ts_db_id text,
+                                ts_name text,
+                                FOREIGN KEY(guild_id) REFERENCES guilds(guild_id),
+                                UNIQUE(guild_id, ts_db_id))''')
+                self.dbc.conn.commit()
 
     def TsClientLimitReached(self, gw_acct_name):
-        current_entries = self.db_cursor.execute("SELECT * FROM users WHERE account_name=?",  (gw_acct_name, )).fetchall()
-        return len(current_entries) >= Config.client_restriction_limit
+        with self.dbc.lock:
+            current_entries = self.dbc.cursor.execute("SELECT * FROM users WHERE account_name=?",  (gw_acct_name, )).fetchall()
+            return len(current_entries) >= Config.client_restriction_limit
 
     def addUserToDB(self, client_unique_id, account_name, api_key, created_date, last_audit_date):
-        client_id = self.getActiveTsUserID(client_unique_id)
-        client_exists = self.db_cursor.execute("SELECT * FROM users WHERE ts_db_id=?",  (client_unique_id,)).fetchall()
-        if len(client_exists) > 1:
-            TS3Auth.log('Function [addUserToDB] WARN: Found multipe database entries for single unique teamspeakid %s.' %client_unique_id, silent = True)
-        if len(client_exists) != 0: # If client TS database id is in BOT's database.
-            self.db_cursor.execute("""UPDATE users SET ts_db_id=?, account_name=?, api_key=?, created_date=?, last_audit_date=? WHERE ts_db_id=?""", (client_unique_id, account_name, api_key, created_date, last_audit_date, client_unique_id))
-            TS3Auth.log("Teamspeak ID %s already in Database updating with new Account Name '%s'. (likely permissions changed by a Teamspeak Admin)" % (client_unique_id, account_name))
-        else:
-            self.db_cursor.execute("INSERT INTO users ( ts_db_id, account_name, api_key, created_date, last_audit_date) VALUES(?,?,?,?,?)",(client_unique_id, account_name, api_key, created_date, last_audit_date))
-        self.db_conn.commit()
+        with self.dbc.lock:
+            client_id = self.getActiveTsUserID(client_unique_id)
+            client_exists = self.dbc.cursor.execute("SELECT * FROM users WHERE ts_db_id=?",  (client_unique_id,)).fetchall()
+            if len(client_exists) > 1:
+                TS3Auth.log('Function [addUserToDB] WARN: Found multipe database entries for single unique teamspeakid %s.' %client_unique_id, silent = True)
+            if len(client_exists) != 0: # If client TS database id is in BOT's database.
+                self.dbc.cursor.execute("""UPDATE users SET ts_db_id=?, account_name=?, api_key=?, created_date=?, last_audit_date=? WHERE ts_db_id=?""", (client_unique_id, account_name, api_key, created_date, last_audit_date, client_unique_id))
+                TS3Auth.log("Teamspeak ID %s already in Database updating with new Account Name '%s'. (likely permissions changed by a Teamspeak Admin)" % (client_unique_id, account_name))
+            else:
+                self.dbc.cursor.execute("INSERT INTO users ( ts_db_id, account_name, api_key, created_date, last_audit_date) VALUES(?,?,?,?,?)",(client_unique_id, account_name, api_key, created_date, last_audit_date))
+            self.dbc.conn.commit()
 
     def removeUserFromDB(self, client_db_id):
-        #client_db_id=
-        self.db_cursor.execute("DELETE FROM users WHERE ts_db_id=?", (client_db_id,))
-        self.db_conn.commit()
+        with self.dbc.lock:
+            self.dbc.cursor.execute("DELETE FROM users WHERE ts_db_id=?", (client_db_id,))
+            self.dbc.conn.commit()
 
     #def updateGuildTags(self, client_db_id, auth):
     def updateGuildTags(self, user, auth):
@@ -343,14 +356,23 @@ class Bot:
         ts_groups = {sg.get("name"):sg.get("sgid") for sg in self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergrouplist").all())[0]}
         ingame_member_of = set(auth.guild_names)
         # names of all groups the user is in, not just guild ones
-        current_group_names = [g.get("name") for g in self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid = client_db_id).all())[0]] 
+        current_group_names = []
+        try:
+            current_group_names = [g.get("name") for g in self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid = client_db_id).all(), signal_exception_handler)[0]] 
+        except TypeError as e:
+            # user had no groups (results in None, instead of an empty list) -> just stick with the []
+            pass
+            
         # data of all guild groups the user is in
         param = ",".join(["'%s'" % (cgn.replace('"', '\\"').replace("'", "\\'"),) for cgn in current_group_names])
         # sanitisation is restricted to replacing single and double quotes. This should not be that much of a problem, since
         # the input for the parameters here are the names of our own server groups on our TS server.   
-        current_guild_groups = self.db_cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group IN (%s)" % (param,)).fetchall()
-        # groups the user doesn't want to wear
-        hidden_groups = set([g[0] for g in self.db_cursor.execute("SELECT g.ts_group FROM guild_ignores AS gi JOIN guilds AS g ON gi.guild_id = g.guild_id  WHERE ts_db_id = ?", (uid,))])
+        current_guild_groups = []
+        hidden_groups = {}
+        with self.dbc.lock:
+            current_guild_groups = self.dbc.cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group IN (%s)" % (param,)).fetchall()
+            # groups the user doesn't want to wear
+            hidden_groups = set([g[0] for g in self.dbc.cursor.execute("SELECT g.ts_group FROM guild_ignores AS gi JOIN guilds AS g ON gi.guild_id = g.guild_id  WHERE ts_db_id = ?", (uid,))])
         # REMOVE STALE GROUPS
         for ggroup, gname in current_guild_groups:
             if ggroup in hidden_groups:
@@ -365,7 +387,9 @@ class Bot:
 
         # ADD DUE GROUPS
         for g in ingame_member_of:
-            ts_group = self.db_cursor.execute("SELECT ts_group FROM guilds WHERE guild_name = ?", (g,)).fetchone()
+            ts_group = None
+            with self.dbc.lock:
+                ts_group = self.dbc.cursor.execute("SELECT ts_group FROM guilds WHERE guild_name = ?", (g,)).fetchone()
             if ts_group:
                 ts_group = ts_group[0] # first and only column, if a row exists
                 if ts_group not in current_group_names:
@@ -379,8 +403,14 @@ class Bot:
                             self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupaddclient", sgid = ts_groups[ts_group], cldbid = client_db_id))
 
     def auditUsers(self):
+        import threading
+        threading.Thread(target=self._auditUsers).start()
+
+    def _auditUsers(self):
         self.c_audit_date = datetime.date.today() #Update current date everytime run
-        self.db_audit_list = self.db_cursor.execute('SELECT * FROM users').fetchall()
+        self.db_audit_list = []
+        with self.dbc.lock:
+            self.dbc.cursor.execute('SELECT * FROM users').fetchall()
         for audit_user in self.db_audit_list:
 
             #Convert to single variables
@@ -402,16 +432,17 @@ class Bot:
                     TS3Auth.log("User %s is still on %s. Succesful audit!" % (audit_account_name, auth.world.get('name')))
                     #self.getTsDatabaseID(audit_ts_id)
                     self.updateGuildTags(User(self.ts_connection, unique_id = audit_ts_id), auth)
-                    #self.updateGuildTags(self.getTsDatabaseID(audit_ts_id), auth)
-                    self.db_cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", (self.c_audit_date, audit_ts_id,))
-                    self.db_conn.commit()
+                    with self.dbc.lock:
+                        self.dbc.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", (self.c_audit_date, audit_ts_id,))
+                        self.dbc.conn.commit()
                 else:
                     TS3Auth.log("User %s is no longer on our server. Removing access...." % (audit_account_name))
                     self.removePermissions(audit_ts_id)
                     self.removeUserFromDB(audit_ts_id)
 
-        self.db_cursor.execute('INSERT INTO bot_info (last_succesful_audit) VALUES (?)', (self.c_audit_date,))
-        self.db_conn.commit()
+        with self.dbc.lock:
+            self.dbc.cursor.execute('INSERT INTO bot_info (last_succesful_audit) VALUES (?)', (self.c_audit_date,))
+            self.dbc.conn.commit()
 
     def broadcastMessage(self):
         self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("sendtextmessage", targetmode = 2, target = self._ts_connection._server_id, msg = Config.locale.get("bot_msg_broadcast")))
@@ -492,8 +523,9 @@ class Bot:
 
         # FROM DB 
         TS3Auth.log("Deleting guild '%s' from DB." % (name,))
-        self.db_cursor.execute("DELETE FROM guilds WHERE guild_name = ?", (name,))
-        self.db_conn.commit()
+        with self.dbc.lock:
+            self.dbc.cursor.execute("DELETE FROM guilds WHERE guild_name = ?", (name,))
+            self.dbc.conn.commit()
         
         # CHANNEL
         channelname = "%s [%s]" % (name, tag)
@@ -554,10 +586,11 @@ class Bot:
             TS3Auth.log("Can not create a group '%s', because it already exists. Aborting guild creation." % (group,))
             return DUPLICATE_TS_GROUP
 
-        dbgroups = self.db_cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group = ?", (groupname,)).fetchall()
-        if(len(dbgroups) > 0):
-            TS3Auth.log("Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation." % (groupname,))
-            return DUPLICATE_DB_ENTRY
+        with self.dbc.lock:
+            dbgroups = self.dbc.cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group = ?", (groupname,)).fetchall()
+            if(len(dbgroups) > 0):
+                TS3Auth.log("Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation." % (groupname,))
+                return DUPLICATE_DB_ENTRY
 
         channel, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = channelname).first(), signal_exception_handler)
         if channel is not None:
@@ -576,6 +609,10 @@ class Bot:
         #########################################
         TS3Auth.log("Retrieving and uploading guild emblem as icon...")
         icon_file_name = "%s_icon.svg" % (tag,)
+        # funnily enough, giving an invalid guild (or one that has no emblem)
+        # results in HTTP 200, but a JSON explaining the error instead of an SVG image.
+        # Storing this JSON and uploading it to TS just fails silently without
+        # causing any problems! 
         with open(icon_file_name, "wb") as fh:
             icon = requests.get(icon_url)
             fh.write(icon.content)
@@ -603,26 +640,19 @@ class Bot:
         all_guild_channels = [c for c in ts3conn.ts3exec(lambda tc: tc.query("channellist").all(), signal_exception_handler)[0] if c.get("pid") == pid]
         all_guild_channels.sort(key=lambda c: c.get("channel_name"), reverse = True)
         
-        # insertion sort in the list of guild channels.
         # Assuming the channels are already in order on the server, 
         # find the first channel whose name is alphabetically smaller than the new channel name.
+        # The sort_order of channels actually specifies after which channel they should be 
+        # inserted. Giving 0 as sort_order puts them in first place after the parent.
         found_place = False
         sort_order = 0
         i = 0
         while i < len(all_guild_channels) and not found_place:
-            if all_guild_channels[i].get("channel_name") < channelname:
+            if all_guild_channels[i].get("channel_name") > channelname:
                 i += 1
             else:
-                sort_order = int(all_guild_channels[i].get("channel_order"))
+                sort_order = int(all_guild_channels[i].get("cid"))
                 found_place = True
-
-        print("i", i, "sortorder", sort_order)
-        # shift all channels after that pivot one to the right.
-        for j in range(i, len(all_guild_channels)):
-            ts3conn.ts3exec(lambda tsc: tsc.exec_("channeledit"
-                                                    , cid = all_guild_channels[j].get("cid")
-                                                    , channel_order = sort_order - j))
-            
 
         cinfo, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate"
                                                 , channel_name = channelname
@@ -659,6 +689,7 @@ class Bot:
         #######################
         TS3Auth.log("Creating and configuring server group...")
         resp, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergroupadd", name = groupname).first(), signal_exception_handler)
+        guildgroupid = resp.get("sgid")
         if ex is not None and ex.resp.error["id"] == "1282":
             TS3Auth.log("Duplication error while trying to create the group '%s' for the guild %s [%s]." % (groupname, name, tag))
 
@@ -671,12 +702,14 @@ class Bot:
                                                         , permskip = 0)
                                     , signal_exception_handler)
 
-        x,ex = servergroupaddperm(resp.get("sgid"), "i_icon_id", icon_id)
-        x,ex = servergroupaddperm(resp.get("sgid"), "b_group_is_permanent", icon_id)
-        x,ex = servergroupaddperm(resp.get("sgid"), "i_group_show_name_in_tree", 1)
+        x,ex = servergroupaddperm(guildgroupid, "i_icon_id", icon_id)
+        x,ex = servergroupaddperm(guildgroupid, "b_group_is_permanent", icon_id)
+        x,ex = servergroupaddperm(guildgroupid, "i_group_show_name_in_tree", 1)
 
         groups.append({"sgid": resp.get("sgid"), "name": groupname}) # the newly created group has to be added to properly iterate over the guild groups
-        guildgroups = [g[0] for g in self.db_cursor.execute("SELECT ts_group FROM guilds ORDER BY ts_group").fetchall()]
+        guildgroups = []
+        with self.dbc.lock:
+            guildgroups = [g[0] for g in self.dbc.cursor.execute("SELECT ts_group FROM guilds ORDER BY ts_group").fetchall()]
         for i in range(len(guildgroups)):
             g = next((g for g in groups if g.get("name") == guildgroups[i]), None)
             if g is None:
@@ -709,8 +742,9 @@ class Bot:
         # CREATE DB GROUP #
         ###################
         TS3Auth.log("Creating entry in database for auto assignment of guild group...")
-        self.db_cursor.execute("INSERT INTO guilds(ts_group, guild_name) VALUES(?,?)", (groupname, name))
-        self.db_conn.commit()
+        with self.dbc.lock:
+            self.dbc.cursor.execute("INSERT INTO guilds(ts_group, guild_name) VALUES(?,?)", (groupname, name))
+            self.dbc.conn.commit()
 
         ################
         # ADD CONTACTS #
@@ -722,23 +756,30 @@ class Bot:
             TS3Auth.log("Can not find a group '%s' for guild contacts. Skipping." % (contactgroup,))
         else:
             for c in contacts:
-                accs = [row[0] for row in self.db_cursor.execute("SELECT ts_db_id FROM users WHERE lower(account_name) = lower(?)", (c,)).fetchall()]
-                for a in accs:
-                    errored = False
-                    try:
-                        u = User(ts3conn, unique_id = a, exception_handler = signal_exception_handler)
-                        tsdbid = u.ts_db_id
-                        _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("setclientchannelgroup"
-                                                                , cid = cinfo.get("cid")
-                                                                , cldbid = tsdbid
-                                                                , cgid = contactgroup.get("cgid"))
-                                        , signal_exception_handler)
-                        errored = ex is not None
-                    except Exception as ex:
-                        errored = True
-                    if errored:
-                        TS3Auth.log("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in guild channel for %s. Maybe the uid is not valid anymore." 
-                                    % (Config.guild_contact_channel_group, c, a, name))
+                with self.dbc.lock:
+                    accs = [row[0] for row in self.dbc.cursor.execute("SELECT ts_db_id FROM users WHERE lower(account_name) = lower(?)", (c,)).fetchall()]
+                    for a in accs:
+                        errored = False
+                        try:
+                            u = User(ts3conn, unique_id = a, ex_hand = signal_exception_handler)
+                            tsdbid = u.ts_db_id
+                            _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("setclientchannelgroup"
+                                                                    , cid = cinfo.get("cid")
+                                                                    , cldbid = tsdbid
+                                                                    , cgid = contactgroup.get("cgid"))
+                                            , signal_exception_handler)
+                            # while we are at it, add the contacts to the guild group as well
+                            _, ex2 = ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddclient"
+                                                                    , sgid = guildgroupid
+                                                                    , cldbid = tsdbid)
+                                            , signal_exception_handler)
+                            
+                            errored = ex is not None
+                        except Exception as ex:
+                            errored = True
+                        if errored:
+                            TS3Auth.log("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in guild channel for %s. Maybe the uid is not valid anymore." 
+                                        % (Config.guild_contact_channel_group, c, a, name))
         return SUCCESS
 
     def client_message_handler(self, ipcserver, clientsocket, message):
@@ -801,27 +842,29 @@ class Bot:
                 cmd, args = self.commandCheck(raw_cmd) #sanitize the commands but also restricts commands to a list of known allowed commands
                 if cmd == "hideguild":
                     TS3Auth.log("User '%s' wants to hide guild '%s'." % (rec_from_name, args[0]))
-                    try:
-                        self.db_cursor.execute("INSERT INTO guild_ignores(guild_id, ts_db_id, ts_name) VALUES((SELECT guild_id FROM guilds WHERE ts_group = ?), ?,?)", (args[0], rec_from_uid, rec_from_name))
-                        self.db_conn.commit()
-                        TS3Auth.log("Success!")
-                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_hide_guild_success")))
-                    except sqlite3.IntegrityError:
-                        self.db_conn.rollback()
-                        TS3Auth.log("Failed. The group probably doesn't exist or the user is already hiding that group.")
-                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_hide_guild_unknown")))
+                    with self.dbc.lock:
+                        try:  
+                            self.dbc.cursor.execute("INSERT INTO guild_ignores(guild_id, ts_db_id, ts_name) VALUES((SELECT guild_id FROM guilds WHERE ts_group = ?), ?,?)", (args[0], rec_from_uid, rec_from_name))
+                            self.dbc.conn.commit()
+                            TS3Auth.log("Success!")
+                            self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_hide_guild_success")))
+                        except sqlite3.IntegrityError:
+                            self.dbc.conn.rollback()
+                            TS3Auth.log("Failed. The group probably doesn't exist or the user is already hiding that group.")
+                            self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_hide_guild_unknown")))
 
                 elif cmd == "unhideguild":
                     TS3Auth.log("User '%s' wants to unhide guild '%s'." % (rec_from_name, args[0]))
-                    self.db_cursor.execute("DELETE FROM guild_ignores WHERE guild_id = (SELECT guild_id FROM guilds WHERE ts_group = ? AND ts_db_id = ?)", (args[0], rec_from_uid))
-                    changes = self.db_cursor.execute("SELECT changes()").fetchone()[0];
-                    self.db_conn.commit()
-                    if changes > 0:
-                        TS3Auth.log("Success!")
-                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_unhide_guild_success")))
-                    else:
-                        TS3Auth.log("Failed. Either the guild is unknown or the user had not hidden the guild anyway.")
-                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_unhide_guild_unknown")))
+                    with self.dbc.lock:
+                        self.dbc.cursor.execute("DELETE FROM guild_ignores WHERE guild_id = (SELECT guild_id FROM guilds WHERE ts_group = ? AND ts_db_id = ?)", (args[0], rec_from_uid))
+                        changes = self.dbc.cursor.execute("SELECT changes()").fetchone()[0];
+                        self.dbc.conn.commit()
+                        if changes > 0:
+                            TS3Auth.log("Success!")
+                            self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_unhide_guild_success")))
+                        else:
+                            TS3Auth.log("Failed. Either the guild is unknown or the user had not hidden the guild anyway.")
+                            self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_unhide_guild_unknown")))
                 elif cmd == 'verifyme':
                     return # command disabled for now
                     if self.clientNeedsVerify(rec_from_uid):

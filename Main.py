@@ -90,7 +90,9 @@ while bot_loop_forever:
             # debug
             """
             BOT.setResetroster(ts3conn, "2020-04-01", red = ["the name with the looooong name"], green = ["another really well hung name", "len", "oof. tat really a long one duuuude"], blue = ["[DUST] dude", "[DUST] anotherone", "[DUST] thecrusty dusty mucky man"], ebg = [])
-            testguilds = [("Requiem of Execution", "RoE", "RoE")
+            """
+            testguilds = [("Sxxxtxxxxxxxmxxxxxwxyxxx", "sdassdas", "assdsss")
+                        , ("Requiem of Execution", "RoE", "RoE")
                         , ("Formation Wolke", "Zerg", "Zerg.")
                         , ("Zergs Rebellion", "Zerg", "Zerg")
                         , ("Rising River", "Side", "Side")
@@ -99,7 +101,7 @@ while bot_loop_forever:
             for gname, gtag, ggroup in testguilds:
                 BOT.removeGuild(gname, gtag, ggroup)
                 BOT.createGuild(gname, gtag, ggroup, ["len.1879", "jey.1111"])
-            """
+            
 
 
             #Forces script to loop forever while we wait for events to come in, unless connection timed out. Then it should loop a new bot into creation.
