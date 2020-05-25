@@ -9,7 +9,7 @@ import os #operating system commands -check if files exist
 import datetime #for date strings
 import schedule # Allows auditing of users every X days
 from bot_messages import * #Import all Static messages the BOT may need
-from threading import Thread, Lock, RLock, currentThread
+from threading import Thread, RLock, currentThread
 import requests # to download guild emblems
 import urllib.parse # for fetching guild emblems urls
 import sys
@@ -72,7 +72,7 @@ class ThreadsafeTSConnection(object):
         self._keepalive_interval = int(keepalive_interval)
         self._server_id = server_id
         self._bot_nickname = bot_nickname
-        self.lock = Lock()
+        self.lock = RLock()
         self.ts_connection = None # done in init()
         self.init()
 
@@ -98,7 +98,8 @@ class ThreadsafeTSConnection(object):
         self.close()
 
     def keepalive(self):
-        self.ts_connection.send_keepalive()
+        with self.lock:
+            self.ts_connection.send_keepalive()
 
     def ts3exec(self, handler, exception_handler = lambda ex: default_exception_handler(ex)): #eh = lambda ex: print(ex)):
         '''
@@ -126,6 +127,7 @@ class ThreadsafeTSConnection(object):
 
         returns a tuple with the results of the two handlers (result first, exception result second).
         '''
+        reinit = False
         with self.lock:
             failed = True
             fails = 0
@@ -139,9 +141,11 @@ class ThreadsafeTSConnection(object):
                     failed = True
                     fails += 1
                     TS3Auth.log("Critical error on transport level! Attempt %s to restart the connection and send the command again." % (str(fails),))
-                    self.init()
+                    reinit = True 
                 except Exception as ex:
                     exres = exception_handler(ex)
+        if reinit:
+            self.init()
         return (res, exres)
 
     def close(self):
@@ -225,7 +229,7 @@ class Bot:
 
         #Check if user is authenticated in database and if so, re-adds them to the group
         with self.dbc.lock:
-            current_entries = self.cursor.execute("SELECT * FROM users WHERE ts_db_id=?",  (unique_client_id,)).fetchall()
+            current_entries = self.dbc.cursor.execute("SELECT * FROM users WHERE ts_db_id=?",  (unique_client_id,)).fetchall()
             if len(current_entries) > 0:
                 self.setPermissions(unique_client_id)
                 return False
@@ -577,118 +581,128 @@ class Bot:
         channelname = "%s [%s]" % (name, tag)
         description = "[b]Contact[/b]:\n%s" % ("\n".join(["    %s" % c for c in contacts]))
         icon_id = binascii.crc32(tag.encode('utf8'))
-        icon_url = "https://guilds.gw2w2w.com/guilds/%s/50.svg" % (urllib.parse.quote(name.replace(" ", "-")),)
+        icon_url = "https://api.gw2mists.de/guilds/emblem/%s/50.svg" % (urllib.parse.quote(name),) #"https://guilds.gw2w2w.com/guilds/%s/50.svg" % (urllib.parse.quote(name.replace(" ", "-")),)
         icon_server_path = "/icon_%s" % (icon_id,)
-
         TS3Auth.log("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'." % (name, tag, groupname, ", ".join(contacts)))
 
-        #############################################
-        # CHECK IF GROUPS OR CHANNELS ALREADY EXIST #
-        #############################################
-        groups, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergrouplist").all(), default_exception_handler)
-        group = next((g for g in groups if g.get("name") == groupname), None)
-        if group is not None:
-            # group already exists!
-            TS3Auth.log("Can not create a group '%s', because it already exists. Aborting guild creation." % (group,))
-            return DUPLICATE_TS_GROUP
+        # lock for the whole block to avoid constant interference
+        with ts3conn.lock:
+            #############################################
+            # CHECK IF GROUPS OR CHANNELS ALREADY EXIST #
+            #############################################
+            TS3Auth.log("Doing preliminary checks.")
+            groups, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergrouplist").all(), default_exception_handler)
+            group = next((g for g in groups if g.get("name") == groupname), None)
+            if group is not None:
+                # group already exists!
+                TS3Auth.log("Can not create a group '%s', because it already exists. Aborting guild creation." % (group,))
+                return DUPLICATE_TS_GROUP
 
-        with self.dbc.lock:
-            dbgroups = self.dbc.cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group = ?", (groupname,)).fetchall()
-            if(len(dbgroups) > 0):
-                TS3Auth.log("Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation." % (groupname,))
-                return DUPLICATE_DB_ENTRY
+            with self.dbc.lock:
+                dbgroups = self.dbc.cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group = ?", (groupname,)).fetchall()
+                if(len(dbgroups) > 0):
+                    TS3Auth.log("Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation." % (groupname,))
+                    return DUPLICATE_DB_ENTRY
 
-        channel, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = channelname).first(), signal_exception_handler)
-        if channel is not None:
-            # channel already exists!
-            TS3Auth.log("Can not create a channel '%s', as it already exists. Aborting guild creation." % (channelname,))
-            return DUPLICATE_TS_CHANNEL
-        
-        parent, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = Config.guilds_parent_channel).first(), signal_exception_handler)
-        if parent is None:
-            # parent channel does not exist!
-            TS3Auth.log("Can not find a parent-channel '%s' for guilds. Aborting guild creation." % (Config.guilds_parent_channel,))
-            return MISSING_PARENT_CHANNEL
+            channel, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = channelname).first(), signal_exception_handler)
+            if channel is not None:
+                # channel already exists!
+                TS3Auth.log("Can not create a channel '%s', as it already exists. Aborting guild creation." % (channelname,))
+                return DUPLICATE_TS_CHANNEL
+            
+            parent, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern = Config.guilds_parent_channel).first(), signal_exception_handler)
+            if parent is None:
+                # parent channel does not exist!
+                TS3Auth.log("Can not find a parent-channel '%s' for guilds. Aborting guild creation." % (Config.guilds_parent_channel,))
+                return MISSING_PARENT_CHANNEL
 
-        #########################################
-        # RETRIEVE AND UPLOAD GUILD EMBLEM ICON #
-        #########################################
-        TS3Auth.log("Retrieving and uploading guild emblem as icon...")
-        icon_file_name = "%s_icon.svg" % (tag,)
-        # funnily enough, giving an invalid guild (or one that has no emblem)
-        # results in HTTP 200, but a JSON explaining the error instead of an SVG image.
-        # Storing this JSON and uploading it to TS just fails silently without
-        # causing any problems! 
-        with open(icon_file_name, "wb") as fh:
-            icon = requests.get(icon_url)
-            fh.write(icon.content)
-        with open(icon_file_name, "rb") as fh:
-            try: 
-                upload = ts3.filetransfer.TS3FileTransfer(ts3conn.ts_connection)
-                res = upload.init_upload(fh, icon_server_path, 0)
-            except KeyError as ke:
-                if not str(ke).find("'port'"): # only way I've found to check what attribute is missing...
-                    raise ke 
+            TS3Auth.log("Checks complete.")
+            #########################################
+            # RETRIEVE AND UPLOAD GUILD EMBLEM ICON #
+            #########################################
+            TS3Auth.log("Retrieving and uploading guild emblem as icon...")
+            icon_file_name = "%s_icon.svg" % (tag,)
+            # funnily enough, giving an invalid guild (or one that has no emblem)
+            # results in HTTP 200, but a JSON explaining the error instead of an SVG image.
+            # Storing this JSON and uploading it to TS just fails silently without
+            # causing any problems! 
+            with open(icon_file_name, "wb") as fh:
+                icon = requests.get(icon_url)
+                fh.write(icon.content)
+            with open(icon_file_name, "rb") as fh:
+                try:
+                    # just this one time, lock the ts3conn manually, 
+                    # as the inner connection itself is being passed around. 
+                    with ts3conn.lock:
+                        upload = ts3.filetransfer.TS3FileTransfer(ts3conn.ts_connection)
+                        res = upload.init_upload(fh, icon_server_path, 0)
+                except ts3.query.TS3QueryError as tqe:
+                    print(tqe)
+                except KeyError as ke:
+                    if not str(ke).find("'port'"): # only way I've found to check what attribute is missing...
+                        # print("error is ", str(ke), str(ke).find("'port'"))
+                        raise ke 
+                    else:
+                        # if we get a KeyError for 'port', something has gone wrong earlier down the line,
+                        # which the TS3 library failed to check. Passing an image that is too big has been
+                        # a problem during development.
+                        TS3Auth.log("Error while trying to upload the guild icon for guild %s [%s]. It has a size of %s, is that maybe more than the admitted file size?" % (name, tag, os.stat(icon_file_name).st_size))
+            os.remove(icon_file_name)
+
+            TS3Auth.log("Icon complete.")
+            ##################################
+            # CREATE CHANNEL AND SUBCHANNELS #
+            ##################################
+            TS3Auth.log("Creating guild channels...")
+            pid = parent.get("cid")
+            info, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelinfo", cid = pid).all(), signal_exception_handler)
+            # assert channel and group both exist and parent channel is available
+            all_guild_channels = [c for c in ts3conn.ts3exec(lambda tc: tc.query("channellist").all(), signal_exception_handler)[0] if c.get("pid") == pid]
+            all_guild_channels.sort(key=lambda c: c.get("channel_name"), reverse = True)
+            
+            # Assuming the channels are already in order on the server, 
+            # find the first channel whose name is alphabetically smaller than the new channel name.
+            # The sort_order of channels actually specifies after which channel they should be 
+            # inserted. Giving 0 as sort_order puts them in first place after the parent.
+            found_place = False
+            sort_order = 0
+            i = 0
+            while i < len(all_guild_channels) and not found_place:
+                if all_guild_channels[i].get("channel_name") > channelname:
+                    i += 1
                 else:
-                    # if we get a KeyError for 'port', something has gone wrong earlier down the line,
-                    # which the TS3 library failed to check. Passing an image that is too big has been
-                    # a problem during development.
-                    TS3Auth.log("Error while trying to upload the guild icon for guild %s [%s]. It has a size of %s, is that maybe more than the admitted file size?" % (name, tag, os.stat(icon_file_name).st_size))
-        os.remove(icon_file_name)
+                    sort_order = int(all_guild_channels[i].get("cid"))
+                    found_place = True
 
-        ##################################
-        # CREATE CHANNEL AND SUBCHANNELS #
-        ##################################
-        TS3Auth.log("Creating guild channels...")
-        pid = parent.get("cid")
-        info, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelinfo", cid = pid).all(), signal_exception_handler)
-        # assert channel and group both exist and parent channel is available
-        all_guild_channels = [c for c in ts3conn.ts3exec(lambda tc: tc.query("channellist").all(), signal_exception_handler)[0] if c.get("pid") == pid]
-        all_guild_channels.sort(key=lambda c: c.get("channel_name"), reverse = True)
-        
-        # Assuming the channels are already in order on the server, 
-        # find the first channel whose name is alphabetically smaller than the new channel name.
-        # The sort_order of channels actually specifies after which channel they should be 
-        # inserted. Giving 0 as sort_order puts them in first place after the parent.
-        found_place = False
-        sort_order = 0
-        i = 0
-        while i < len(all_guild_channels) and not found_place:
-            if all_guild_channels[i].get("channel_name") > channelname:
-                i += 1
-            else:
-                sort_order = int(all_guild_channels[i].get("cid"))
-                found_place = True
+            cinfo, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate"
+                                                    , channel_name = channelname
+                                                    , channel_description = description
+                                                    , cpid = pid
+                                                    , channel_flag_permanent = 1
+                                                    , channel_needed_join_power = 50
+                                                    , channel_needed_subscribe_power = 50
+                                                    , channel_needed_modify_power = 50
+                                                    , channel_needed_delete_power = 75
+                                                    , channel_maxclients = 0
+                                                    , channel_order = sort_order
+                                                    , channel_flag_maxclients_unlimited = 0)
+                                        .first(), signal_exception_handler)
 
-        cinfo, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate"
-                                                , channel_name = channelname
-                                                , channel_description = description
-                                                , cpid = pid
-                                                , channel_flag_permanent = 1
-                                                , channel_needed_join_power = 50
-                                                , channel_needed_subscribe_power = 50
-                                                , channel_needed_modify_power = 50
-                                                , channel_needed_delete_power = 75
-                                                , channel_maxclients = 0
-                                                , channel_order = sort_order
-                                                , channel_flag_maxclients_unlimited = 0)
-                                    .first(), signal_exception_handler)
+            _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeladdperm"
+                                                            , cid = cinfo.get("cid")
+                                                            , permsid = "i_icon_id"
+                                                            , permvalue = icon_id
+                                                            , permnegated = 0
+                                                            , permskip = 0)
+                                    , signal_exception_handler)
 
-        _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeladdperm"
-                                                        , cid = cinfo.get("cid")
-                                                        , permsid = "i_icon_id"
-                                                        , permvalue = icon_id
-                                                        , permnegated = 0
-                                                        , permskip = 0)
-                                , signal_exception_handler)
-
-        for c in Config.guild_sub_channels:
-            # FIXME: error check
-            res, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate"
-                                                            , channel_name = c
-                                                            , cpid = cinfo.get("cid")
-                                                            , channel_flag_permanent = 1)
-                                                .first(), signal_exception_handler)
+            for c in Config.guild_sub_channels:
+                # FIXME: error check
+                res, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate"
+                                                                , channel_name = c
+                                                                , cpid = cinfo.get("cid")
+                                                                , channel_flag_permanent = 1)
+                                                    .first(), signal_exception_handler)
 
         #######################
         # CREATE SERVER GROUP #
