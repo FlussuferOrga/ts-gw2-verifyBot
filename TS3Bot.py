@@ -578,10 +578,21 @@ class Bot:
 
         ts3conn = self.ts_connection
         channelname = "%s [%s]" % (name, tag)
-        description = "[b]Contact[/b]:\n%s" % ("\n".join(["    %s" % c for c in contacts]))
         icon_id = binascii.crc32(tag.encode('utf8'))
         icon_url = "https://api.gw2mists.de/guilds/emblem/%s/50.svg" % (urllib.parse.quote(name),) #"https://guilds.gw2w2w.com/guilds/%s/50.svg" % (urllib.parse.quote(name.replace(" ", "-")),)
         icon_server_path = "/icon_%s" % (icon_id,)
+
+        description = f"""\
+        [center]
+        [img]https://api.gw2mists.de/guilds/emblem/{urllib.parse.quote(name)}/128.svg[/img]
+        [size=20]{name} - {tag}[/size]
+        [/center]
+        [hr]
+        [size=12]Contacts:[/size]
+        {"\n".join(["• %s" % c for c in contacts])}
+        [hr]
+        """
+
         TS3Auth.log("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'." % (name, tag, groupname, ", ".join(contacts)))
 
         # lock for the whole block to avoid constant interference
