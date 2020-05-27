@@ -582,17 +582,13 @@ class Bot:
         icon_url = "https://api.gw2mists.de/guilds/emblem/%s/50.svg" % (urllib.parse.quote(name),) #"https://guilds.gw2w2w.com/guilds/%s/50.svg" % (urllib.parse.quote(name.replace(" ", "-")),)
         icon_server_path = "/icon_%s" % (icon_id,)
 
-        description_icon_url = "https://api.gw2mists.de/guilds/emblem/%s/128.svg" % (urllib.parse.quote(name),)
-        description = "[b]Contact[/b]:\n%s" % ("\n".join(["    %s" % c for c in contacts]))
-        string = f"""\
+        description = f"""\
         [center]
-        [img]{description_icon_url}[/img]
+        [img]https://api.gw2mists.de/guilds/emblem/{urllib.parse.quote(name)}/128.svg[/img]
         [size=20]{name} - {tag}[/size]
         [/center]
         [hr]
-        Herzlich willkommen im TS-Gildenkanal von [B][{tag}] {name}[/B]!
-
-        [size=12]Ansprechpartner:[/size]
+        [size=12]Contacts:[/size]
         {"\n".join(["• %s" % c for c in contacts])}
         [hr]
         """
