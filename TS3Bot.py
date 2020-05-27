@@ -16,6 +16,7 @@ import sys
 import ipc
 import traceback
 import binascii # crc32
+from textwrap import dedent
 from StringShortener import StringShortener
 
 #######################################
@@ -511,7 +512,7 @@ class Bot:
                     # probably not a bug (channel still unused), but can be a config problem
                     TS3Auth.log("Channel '%s' already exists. This is probably not a problem. Skipping." % (newname,))      
 
-    def remove_guild(self, name, tag, groupname):
+    def removeGuild(self, name, tag, groupname):
         '''
         Removes a guild from the TS. That is:
         - deletes their guild channel and all their subchannels by force
@@ -548,7 +549,7 @@ class Bot:
             TS3Auth.log("Deleting group '%s'." % (groupname,))
             ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupdel", sgid = group.get("sgid"), force = 1))
 
-    def create_guild(self, name, tag, groupname, contacts):
+    def createGuild(self, name, tag, groupname, contacts):
         '''
         Creates a guild in the TS.
         - retrieves and uploads their emblem as icon
@@ -582,16 +583,17 @@ class Bot:
         icon_url = "https://api.gw2mists.de/guilds/emblem/%s/50.svg" % (urllib.parse.quote(name),) #"https://guilds.gw2w2w.com/guilds/%s/50.svg" % (urllib.parse.quote(name.replace(" ", "-")),)
         icon_server_path = "/icon_%s" % (icon_id,)
 
-        description = f"""\
+        cs = "\n".join(["• %s" % c for c in contacts])
+        description = dedent(f"""\
         [center]
         [img]https://api.gw2mists.de/guilds/emblem/{urllib.parse.quote(name)}/128.svg[/img]
         [size=20]{name} - {tag}[/size]
         [/center]
         [hr]
         [size=12]Contacts:[/size]
-        {"\n".join(["• %s" % c for c in contacts])}
+            {cs}
         [hr]
-        """
+        """)
 
         TS3Auth.log("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'." % (name, tag, groupname, ", ".join(contacts)))
 
@@ -747,7 +749,7 @@ class Bot:
                  ("i_group_needed_modify_power", 75),
                  ("i_group_needed_member_add_power", 50),
                  ("i_group_needed_member_remove_power", 50),
-                 ("i_talk_power", 150)
+                 ("i_client_talk_power", 150)
                 ] # FIXME i_talk_power between 100 and 199 
 
         for p,v in perms:
@@ -852,7 +854,7 @@ class Bot:
                 mtag = self.try_get(margs, "tag", default = None)
                 mgroupname = self.try_get(margs, "tsgroup", default = mtag)
                 mcontacts = self.try_get(margs, "contacts", default = [])
-                res = -1 if mname is None or mtag is None else self.create_guild(mname, mtag, mgroupname, mcontacts)
+                res = -1 if mname is None or mtag is None else self.createGuild(mname, mtag, mgroupname, mcontacts)
                 clientsocket.respond(mid, mcommand, {"status": res})                    
 
         if mtype == "delete":
