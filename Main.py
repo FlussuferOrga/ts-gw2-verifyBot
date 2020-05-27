@@ -99,8 +99,8 @@ while bot_loop_forever:
             #            , ("Zum Henker", "ZH", "ZH")]
             #
             #for gname, gtag, ggroup in testguilds:
-            #    BOT.removeGuild(gname, gtag, ggroup)
-            #    BOT.createGuild(gname, gtag, ggroup, ["len.1879", "jey.1111"])
+            #    BOT.remove_guild(gname, gtag, ggroup)
+            #    BOT.create_guild(gname, gtag, ggroup, ["len.1879", "jey.1111"])
 
             #Forces script to loop forever while we wait for events to come in, unless connection timed out. Then it should loop a new bot into creation.
             TS3Auth.log("BOT now idle, waiting for requests.")

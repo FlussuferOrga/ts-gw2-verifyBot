@@ -98,8 +98,7 @@ class ThreadsafeTSConnection(object):
         self.close()
 
     def keepalive(self):
-        with self.lock:
-            self.ts_connection.send_keepalive()
+        self.ts3exec(lambda tc: tc.send_keepalive())
 
     def ts3exec(self, handler, exception_handler = lambda ex: default_exception_handler(ex)): #eh = lambda ex: print(ex)):
         '''
@@ -512,7 +511,7 @@ class Bot:
                     # probably not a bug (channel still unused), but can be a config problem
                     TS3Auth.log("Channel '%s' already exists. This is probably not a problem. Skipping." % (newname,))      
 
-    def removeGuild(self, name, tag, groupname):
+    def remove_guild(self, name, tag, groupname):
         '''
         Removes a guild from the TS. That is:
         - deletes their guild channel and all their subchannels by force
@@ -549,7 +548,7 @@ class Bot:
             TS3Auth.log("Deleting group '%s'." % (groupname,))
             ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupdel", sgid = group.get("sgid"), force = 1))
 
-    def createGuild(self, name, tag, groupname, contacts):
+    def create_guild(self, name, tag, groupname, contacts):
         '''
         Creates a guild in the TS.
         - retrieves and uploads their emblem as icon
@@ -586,7 +585,9 @@ class Bot:
         TS3Auth.log("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'." % (name, tag, groupname, ", ".join(contacts)))
 
         # lock for the whole block to avoid constant interference
-        with ts3conn.lock:
+        # locking the ts3conn is vital to properly do the TS3FileTransfer
+        # down the line.
+        with ts3conn.lock, self.dbc.lock:
             #############################################
             # CHECK IF GROUPS OR CHANNELS ALREADY EXIST #
             #############################################
@@ -631,11 +632,10 @@ class Bot:
                 fh.write(icon.content)
             with open(icon_file_name, "rb") as fh:
                 try:
-                    # just this one time, lock the ts3conn manually, 
-                    # as the inner connection itself is being passed around. 
-                    with ts3conn.lock:
-                        upload = ts3.filetransfer.TS3FileTransfer(ts3conn.ts_connection)
-                        res = upload.init_upload(fh, icon_server_path, 0)
+                    # it is important to have acquired the lock for the ts3conn globally 
+                    # at this point, as we directly pass the wrapped connection around
+                    upload = ts3.filetransfer.TS3FileTransfer(ts3conn.ts_connection)
+                    res = upload.init_upload(fh, icon_server_path, 0)
                 except ts3.query.TS3QueryError as tqe:
                     print(tqe)
                 except KeyError as ke:
@@ -679,22 +679,29 @@ class Bot:
                                                     , channel_description = description
                                                     , cpid = pid
                                                     , channel_flag_permanent = 1
-                                                    , channel_needed_join_power = 50
-                                                    , channel_needed_subscribe_power = 50
-                                                    , channel_needed_modify_power = 50
-                                                    , channel_needed_delete_power = 75
                                                     , channel_maxclients = 0
                                                     , channel_order = sort_order
                                                     , channel_flag_maxclients_unlimited = 0)
                                         .first(), signal_exception_handler)
 
-            _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeladdperm"
-                                                            , cid = cinfo.get("cid")
-                                                            , permsid = "i_icon_id"
-                                                            , permvalue = icon_id
+            perms = [("i_channel_needed_join_power", 25),
+                     ("i_channel_needed_subscribe_power", 25),
+                     ("i_channel_needed_modify_power", 45),
+                     ("i_channel_needed_delete_power", 75),
+                     ("i_icon_id", icon_id)
+                    ]
+
+            def channeladdperm(cid, permsid, permvalue):
+                        return ts3conn.ts3exec(lambda tsc: tsc.exec_("channeladdperm"
+                                                            , cid = cid
+                                                            , permsid = permsid
+                                                            , permvalue = permvalue
                                                             , permnegated = 0
                                                             , permskip = 0)
-                                    , signal_exception_handler)
+                                        , signal_exception_handler)
+
+            for p,v in perms:
+                _, ex = channeladdperm(cinfo.get("cid"), p, v)
 
             for c in Config.guild_sub_channels:
                 # FIXME: error check
@@ -722,9 +729,18 @@ class Bot:
                                                         , permskip = 0)
                                     , signal_exception_handler)
 
-        x,ex = servergroupaddperm(guildgroupid, "i_icon_id", icon_id)
-        x,ex = servergroupaddperm(guildgroupid, "b_group_is_permanent", icon_id)
-        x,ex = servergroupaddperm(guildgroupid, "i_group_show_name_in_tree", 1)
+        perms = [("i_icon_id", icon_id), 
+                 ("b_group_is_permanent", icon_id), 
+                 ("i_group_show_name_in_tree", 1),
+                 ("i_group_sort_id", -100),
+                 ("i_group_needed_modify_power", 75),
+                 ("i_group_needed_member_add_power", 50),
+                 ("i_group_needed_member_remove_power", 50),
+                 ("i_talk_power", 150)
+                ] # FIXME i_talk_power between 100 and 199 
+
+        for p,v in perms:
+            x,ex = servergroupaddperm(guildgroupid, p, v)
 
         groups.append({"sgid": resp.get("sgid"), "name": groupname}) # the newly created group has to be added to properly iterate over the guild groups
         guildgroups = []
@@ -825,7 +841,7 @@ class Bot:
                 mtag = self.try_get(margs, "tag", default = None)
                 mgroupname = self.try_get(margs, "tsgroup", default = mtag)
                 mcontacts = self.try_get(margs, "contacts", default = [])
-                res = -1 if mname is None or mtag is None else self.createGuild(mname, mtag, mgroupname, mcontacts)
+                res = -1 if mname is None or mtag is None else self.create_guild(mname, mtag, mgroupname, mcontacts)
                 clientsocket.respond(mid, mcommand, {"status": res})                    
 
         if mtype == "delete":
@@ -926,7 +942,7 @@ class Bot:
 
                                 #Add user to database so we can query their API key over time to ensure they are still on our server
                                 self.addUserToDB(rec_from_uid, auth.name, uapi, today_date, today_date)
-                                self.updateGuildTags(User(self.ts_connection, unique_id = rec_from_uid, exception_handler = signal_exception_handler), auth)
+                                self.updateGuildTags(User(self.ts_connection, unique_id = rec_from_uid, ex_hand = signal_exception_handler), auth)
                                 # self.updateGuildTags(rec_from_uid, auth)
                                 TS3Auth.log("Added user to DB with ID %s" %rec_from_uid)
 
