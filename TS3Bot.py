@@ -724,6 +724,15 @@ class Bot:
                                                                 , channel_flag_permanent = 1)
                                                     .first(), signal_exception_handler)
 
+        ###################
+        # CREATE DB GROUP #
+        ###################
+        # must exist in DB before creating group to have it available when reordering groups.
+        TS3Auth.log("Creating entry in database for auto assignment of guild group...")
+        with self.dbc.lock:
+            self.dbc.cursor.execute("INSERT INTO guilds(ts_group, guild_name) VALUES(?,?)", (groupname, name))
+            self.dbc.conn.commit()
+
         #######################
         # CREATE SERVER GROUP #
         #######################
@@ -748,8 +757,8 @@ class Bot:
                  ("i_group_sort_id", -100),
                  ("i_group_needed_modify_power", 75),
                  ("i_group_needed_member_add_power", 50),
-                 ("i_group_needed_member_remove_power", 50),
-                 ("i_client_talk_power", 150)
+                 ("i_group_needed_member_remove_power", 50)
+                 # ("i_client_talk_power", 150)
                 ] # FIXME i_talk_power between 100 and 199 
 
         for p,v in perms:
@@ -766,34 +775,16 @@ class Bot:
                 TS3Auth.log("Found guild '%s' in the database, but no coresponding server group! Skipping this entry, but it should be fixed!" % (guildgroups[i],))
             else:
                 tp = Config.guilds_maximum_talk_power - i
-                # sort guild groups to have users grouped by their guild tag alphabetically
-                x,ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddperm"
-                                                            , sgid = g.get("sgid")
-                                                            , permsid = "i_client_talk_power"
-                                                            , permvalue = tp
-                                                            , permnegated = 0
-                                                            , permskip = 0)
-                                        , signal_exception_handler)
 
                 if tp < 0:
                     TS3Auth.log("Warning: talk power for guild %s is below 0." % (g.get("name")))
 
-                # sort guild groups to be ordered alphabetically in the context-menu
-                x,ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddperm"
-                                                            , sgid = g.get("sgid")
-                                                            , permsid = "i_group_sort_id"
-                                                            , permvalue = Config.guilds_minimum_sort_order + i
-                                                            , permnegated = 0
-                                                            , permskip = 0)
-                                        , signal_exception_handler)
+                # sort guild groups to have users grouped by their guild tag alphabetically
+                x,ex = servergroupaddperm(g.get("sgid"), "i_client_talk_power", tp)
 
-        ###################
-        # CREATE DB GROUP #
-        ###################
-        TS3Auth.log("Creating entry in database for auto assignment of guild group...")
-        with self.dbc.lock:
-            self.dbc.cursor.execute("INSERT INTO guilds(ts_group, guild_name) VALUES(?,?)", (groupname, name))
-            self.dbc.conn.commit()
+                # sort guild groups to be ordered alphabetically in the context-menu
+                x,ex = servergroupaddperm(g.get("sgid"), "i_group_sort_id", Config.guilds_minimum_sort_order + i)
+
 
         ################
         # ADD CONTACTS #
