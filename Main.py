@@ -31,7 +31,7 @@ while bot_loop_forever:
                                     , Config.server_id
                                     , Config.bot_nickname) as ts3conn:         
             BOT=Bot(Config.db_file_name, ts3conn, Config.verified_group, Config.bot_nickname)
-            IPCS=ipc.TwistedServer(Config.ipc_port, ts3conn, client_message_handler = BOT.client_message_handler)
+            IPCS=ipc.TwistedServer(Config.ipc_port, ts3conn, client_message_handler = BOT.clientMessageHandler)
 
             ipcthread = Thread(target = IPCS.run)
             ipcthread.daemon = True
@@ -115,12 +115,12 @@ while bot_loop_forever:
                     try:
                         if "msg" in event.parsed[0]:
                             # text message
-                            BOT.message_event_handler(event) # handle event
+                            BOT.messageEventHandler(event) # handle event
                         elif "reasonmsg" in event.parsed[0]:
                             # user left
                             pass
                         else:
-                            BOT.login_event_handler(event)
+                            BOT.loginEventHandler(event)
                     except Exception as ex:
                         TS3Auth.log("Error while trying to handle event %s: %s" % (str(event), str(ex)))
 

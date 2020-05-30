@@ -43,7 +43,6 @@ class ThreadsafeDBConnection(object):
         self.cursor = self.conn.cursor()
         self.lock = RLock()
 
-
 class ThreadsafeTSConnection(object):
     RETRIES = 3
 
@@ -63,7 +62,7 @@ class ThreadsafeTSConnection(object):
                    Note that the server id HAS to be selected at some point, using the "use" command.
                    It has just been wrapped in here to allow for more convenient copying of the 
                    TS3 connection where the appropriate server is selected automatically.
-        bot_nickname: nickname for the bot. Could be suffixed, see gentle_rename. If None is passed,
+        bot_nickname: nickname for the bot. Could be suffixed, see gentleRename. If None is passed,
                       no naming will take place.
         '''
         self._user = user 
@@ -90,7 +89,7 @@ class ThreadsafeTSConnection(object):
         if self._server_id is not None:
             self.ts3exec(lambda tc: tc.exec_("use", sid=self._server_id))
         if self._bot_nickname is not None:
-            self.force_rename(self._bot_nickname)
+            self.forceRename(self._bot_nickname)
 
     def __enter__(self):
         return self
@@ -154,12 +153,12 @@ class ThreadsafeTSConnection(object):
     def copy(self):
         tsc = ThreadsafeTSConnection(self._user, self._password, self._host, self._port, self._keepalive_interval, self._server_id, None)
         # make sure to 
-        # 1. not pass bot_nickname to the constructor, or the child (copy) would call force_rename and attempt to kick the parent
+        # 1. not pass bot_nickname to the constructor, or the child (copy) would call forceRename and attempt to kick the parent
         # 2. gently rename the copy afterwards
-        tsc.gentle_rename(self._bot_nickname)
+        tsc.gentleRename(self._bot_nickname)
         return tsc
 
-    def gentle_rename(self, nickname):
+    def gentleRename(self, nickname):
         '''
         Renames self to nickname, but attaches a running counter
         to the name if the nickname is already taken.
@@ -174,7 +173,7 @@ class ThreadsafeTSConnection(object):
         self._bot_nickname = new_nick;   
         return self._bot_nickname  
 
-    def force_rename(self, nickname):
+    def forceRename(self, nickname):
         '''
         Attempts to forcefully rename self. 
         If the chosen nickname is already taken, the bot will attempt to kick that user.
@@ -187,7 +186,7 @@ class ThreadsafeTSConnection(object):
                 TS3Auth.log("Renaming self to '%s' after kicking existing user with reserved name failed. Warning: this usually only happens for serverquery logins, meaning you are running multiple bots or you are having stale logins from crashed bot instances on your server. Only restarts can solve the latter." % (nickname,))
             else:
                 TS3Auth.log("Kicked user who was using the reserved registration bot name '%s'." % (nickname,))                  
-            nickname = self.gentle_rename(nickname)
+            nickname = self.gentleRename(nickname)
             TS3Auth.log("Renamed self to '%s'." % (nickname,))
         else:
             self.ts3exec(lambda tc: tc.exec_("clientupdate", client_nickname=nickname))
@@ -206,7 +205,7 @@ class Bot:
         self.db_name = db
         self.name = admin_data.get('client_login_name')
         self.client_id = admin_data.get('client_id')
-        self.nickname = self.ts_connection.force_rename(bot_nickname)
+        self.nickname = self.ts_connection.forceRename(bot_nickname)
         self.verified_group = verified_group
         self.vgrp_id = self.groupFind(verified_group)
         self.getUserDatabase()
@@ -822,7 +821,7 @@ class Bot:
                                         % (Config.guild_contact_channel_group, c, a, name))
         return SUCCESS
 
-    def client_message_handler(self, ipcserver, clientsocket, message):
+    def clientMessageHandler(self, ipcserver, clientsocket, message):
         mtype = self.try_get(message, "type", lower = True)
         mcommand = self.try_get(message, "command", lower = True)
         margs = self.try_get(message, "args", typer = lambda a: dict(a), default = {})
@@ -857,7 +856,7 @@ class Bot:
                 clientsocket.respond(mid, mcommand, {"deleted": changes})
 
     # Handler that is used every time an event (message) is received from teamspeak server
-    def message_event_handler(self, event):
+    def messageEventHandler(self, event):
         """
         *event* is a ts3.response.TS3Event instance, that contains the name
         of the event and the data.
