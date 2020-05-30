@@ -18,6 +18,15 @@ import traceback
 import binascii # crc32
 from textwrap import dedent
 from StringShortener import StringShortener
+import json
+
+def request(url):
+    response = requests.get(url, headers={"Content-Type": "application/json"})
+
+    if response.status_code == 200:
+        return json.loads(response.content.decode("utf-8"))
+    else:
+        return None
 
 #######################################
 def default_exception_handler(ex):
@@ -459,7 +468,7 @@ class Bot:
     def getTsUniqueID(self, client_db_id):
         return self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("clientgetnamefromdbid", cldbid = client_db_id).first().get('cluid'))[0]
 
-    def login_event_handler(self, event):
+    def loginEventHandler(self, event):
         raw_sgroups = event.parsed[0].get('client_servergroups')
         raw_clid = event.parsed[0].get('clid')
         raw_cluid = event.parsed[0].get('client_unique_identifier')
@@ -510,6 +519,16 @@ class Bot:
                     # channel name already in use
                     # probably not a bug (channel still unused), but can be a config problem
                     TS3Auth.log("Channel '%s' already exists. This is probably not a problem. Skipping." % (newname,))      
+
+
+    def getGuildInfo(self, guildname):
+        ''' 
+        Lookup guild by name. If such a guild exists (and the API is available)
+        the info as specified on https://wiki.guildwars2.com/wiki/API:2/guild/:id is returned.
+        Else, None is returned.
+        '''
+        ids = request("https://api.guildwars2.com/v2/guild/search?name=%s" % (urllib.parse.quote(guildname),))
+        return None if ids is None or len(ids) == 0 else request("https://api.guildwars2.com/v2/guild/%s" % (ids[0]))
 
     def removeGuild(self, name, tag, groupname):
         '''
@@ -757,8 +776,7 @@ class Bot:
                  ("i_group_needed_modify_power", 75),
                  ("i_group_needed_member_add_power", 50),
                  ("i_group_needed_member_remove_power", 50)
-                 # ("i_client_talk_power", 150)
-                ] # FIXME i_talk_power between 100 and 199 
+                ] 
 
         for p,v in perms:
             x,ex = servergroupaddperm(guildgroupid, p, v)
@@ -854,6 +872,24 @@ class Bot:
                 TS3Auth.log("Received request to delete user '%s' from the TS registration database." % (mgw2account,))
                 changes = self.removePermissionsByGW2Account(mgw2account)
                 clientsocket.respond(mid, mcommand, {"deleted": changes})
+            if mcommand == "guild":
+                res = 0
+                mname = self.try_get(margs, "name", default = None)
+                TS3Auth.log("Received request to delete guild %s" % (mname,))
+                ginfo = self.getGuildInfo(self, guildname)
+                if ginfo is None:
+                    res = 1
+                else:
+                    tag = ginfo.get("tag")
+                    with self.dbc.lock:
+                        g = self.dbc.cursor.execute("SELECT ts_group FROM guilds WHERE guild_name = ?", (mname,)).fetchone()
+                        groupname = g[0] if g is not None else None
+
+                    if groupname is None:
+                        res = 2
+                    else:
+                        res = self.removeGuild(mname, tag, groupname)
+                clientsocket.respond(mid, mcommand, {"status": res})
 
     # Handler that is used every time an event (message) is received from teamspeak server
     def messageEventHandler(self, event):

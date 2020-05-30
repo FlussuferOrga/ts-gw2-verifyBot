@@ -100,7 +100,7 @@ while bot_loop_forever:
                         , ("Ups Falsche Taste", "UPS", "UPS")   
                         , ("Rising River", "Side", "Side")
                         , ("Demons of Dawn", "DoD", "DoD")]
-            
+
             #for gname, gtag, ggroup in testguilds:
             #    BOT.removeGuild(gname, gtag, ggroup)
             #    BOT.createGuild(gname, gtag, ggroup, ["len.1879", "jey.1111"])
@@ -135,3 +135,4 @@ while bot_loop_forever:
         sys.exit(0)
 
 #######################################
+
