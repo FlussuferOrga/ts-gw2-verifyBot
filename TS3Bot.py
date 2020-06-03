@@ -546,7 +546,7 @@ class Bot:
 
         ginfo = self.getGuildInfo(name)
         if ginfo is None:
-            return INVALID_GUILD
+            return INVALID_GUILD_NAME
 
         with self.dbc.lock:
             g = self.dbc.cursor.execute("SELECT ts_group FROM guilds WHERE guild_name = ?", (name,)).fetchone()
@@ -758,6 +758,7 @@ class Bot:
 
         if icon_id is not None:
             perms.append(("i_icon_id", icon_id))
+
 
         for p,v in perms:
             x,ex = servergroupaddperm(guildgroupid, p, v)
