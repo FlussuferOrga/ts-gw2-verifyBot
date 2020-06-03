@@ -549,7 +549,7 @@ class Bot:
 
         ginfo = self.getGuildInfo(name)
         if ginfo is None:
-            return INVALID_GUILD
+            return INVALID_GUILD_NAME
 
         with self.dbc.lock:
             g = self.dbc.cursor.execute("SELECT ts_group FROM guilds WHERE guild_name = ?", (name,)).fetchone()
@@ -621,7 +621,7 @@ class Bot:
         icon_url = "https://api.gw2mists.de/guilds/emblem/%s/50.svg" % (urllib.parse.quote(name),) #"https://guilds.gw2w2w.com/guilds/%s/50.svg" % (urllib.parse.quote(name.replace(" ", "-")),)
         icon_server_path = "/icon_%s" % (icon_id,)
 
-        cs = "\n".join(["• %s" % c for c in contacts])
+        cs = "\n".join(["            • %s" % c for c in contacts])
         description = dedent(f"""\
         [center]
         [img]https://api.gw2mists.de/guilds/emblem/{urllib.parse.quote(name)}/128.svg[/img]
@@ -629,7 +629,7 @@ class Bot:
         [/center]
         [hr]
         [size=12]Contacts:[/size]
-            {cs}
+        {cs}
         [hr]
         """)
 
@@ -792,7 +792,7 @@ class Bot:
         perms = [("i_icon_id", icon_id), 
                  ("b_group_is_permanent", icon_id), 
                  ("i_group_show_name_in_tree", 1),
-                 ("i_group_sort_id", -100),
+                 ("i_group_sort_id", 1100),
                  ("i_group_needed_modify_power", 75),
                  ("i_group_needed_member_add_power", 50),
                  ("i_group_needed_member_remove_power", 50)
