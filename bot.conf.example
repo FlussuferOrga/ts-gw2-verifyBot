@@ -133,8 +133,7 @@ guilds_parent_channel = Guilds
 guild_sub_channels = ["Lobby", "Raids"]
 guild_contact_channel_group = Guild Contact
 maximum_talk_power = 90
-minimum_sort_order = 100
-
+guild_sort_id = 1100
 
 #######################################
 

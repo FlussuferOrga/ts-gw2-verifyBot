@@ -75,7 +75,7 @@ guilds_parent_channel = configs.get("guilds", "guilds_parent_channel")
 guild_sub_channels = ast.literal_eval(configs.get("guilds", "guild_sub_channels"))
 guilds_minimum_talk_power = int(configs.get("guilds", "minimum_talk_power"))
 guilds_maximum_talk_power = int(configs.get("guilds", "maximum_talk_power"))
-guilds_minimum_sort_order = int(configs.get("guilds", "minimum_sort_order"))
+guilds_sort_id = int(configs.get("guilds", "guild_sort_id"))
 guild_contact_channel_group = configs.get("guilds", "guild_contact_channel_group")
 
 # Constants

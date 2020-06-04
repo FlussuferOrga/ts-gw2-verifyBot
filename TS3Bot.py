@@ -1,24 +1,21 @@
 #!/usr/bin/python
-import Config
-import ts3 #teamspeak library
-import time #time for sleep function
-import re #regular expressions
-import TS3Auth #includes datetime import
-import sqlite3 #Database
-import os #operating system commands -check if files exist
-import datetime #for date strings
-import schedule # Allows auditing of users every X days
-from bot_messages import * #Import all Static messages the BOT may need
-from threading import Thread, RLock, currentThread
-import requests # to download guild emblems
-import urllib.parse # for fetching guild emblems urls
-import sys
-import ipc
-import traceback
-import binascii # crc32
-from textwrap import dedent
-from StringShortener import StringShortener
+import binascii  # crc32
+import datetime  # for date strings
 import json
+import os  # operating system commands -check if files exist
+import sqlite3  # Database
+import traceback
+import urllib.parse  # for fetching guild emblems urls
+from threading import RLock
+
+import requests  # to download guild emblems
+import schedule  # Allows auditing of users every X days
+import ts3  # teamspeak library
+
+import Config
+from StringShortener import StringShortener
+from bot_messages import *  # Import all Static messages the BOT may need
+
 
 def request(url):
     response = requests.get(url, headers={"Content-Type": "application/json"})
@@ -316,8 +313,8 @@ class Bot:
                 # BOT INFO
                 self.dbc.cursor.execute('''CREATE TABLE bot_info(version text, last_succesful_audit date)''')
                 self.dbc.conn.commit()
-                self.dbc.cursor.execute('INSERT INTO bot_info (version, last_succesful_audit) VALUES (?,?)', (current_version, datetime.date.today(), ))
-                self.dbc.conn.commit()
+                #self.dbc.cursor.execute('INSERT INTO bot_info (version, last_succesful_audit) VALUES (?,?)', (current_version, datetime.date.today(), ))
+                #self.dbc.conn.commit()
                 # GUILD INFO
                 self.dbc.cursor.execute('''CREATE TABLE guilds(
                                 guild_id integer primary key autoincrement, 
@@ -617,21 +614,8 @@ class Bot:
 
         ts3conn = self.ts_connection
         channelname = "%s [%s]" % (name, tag)
-        icon_id = binascii.crc32(tag.encode('utf8'))
-        icon_url = "https://api.gw2mists.de/guilds/emblem/%s/50.svg" % (urllib.parse.quote(name),) #"https://guilds.gw2w2w.com/guilds/%s/50.svg" % (urllib.parse.quote(name.replace(" ", "-")),)
-        icon_server_path = "/icon_%s" % (icon_id,)
 
-        cs = "\n".join(["            • %s" % c for c in contacts])
-        description = dedent(f"""\
-        [center]
-        [img]https://api.gw2mists.de/guilds/emblem/{urllib.parse.quote(name)}/128.svg[/img]
-        [size=20]{name} - {tag}[/size]
-        [/center]
-        [hr]
-        [size=12]Contacts:[/size]
-        {cs}
-        [hr]
-        """)
+        channel_description = self.create_guild_channel_description(contacts, name, tag)
 
         TS3Auth.log("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'." % (name, tag, groupname, ", ".join(contacts)))
 
@@ -669,38 +653,10 @@ class Bot:
                 return MISSING_PARENT_CHANNEL
 
             TS3Auth.log("Checks complete.")
-            #########################################
-            # RETRIEVE AND UPLOAD GUILD EMBLEM ICON #
-            #########################################
-            TS3Auth.log("Retrieving and uploading guild emblem as icon...")
-            icon_file_name = "%s_icon.svg" % (tag,)
-            # funnily enough, giving an invalid guild (or one that has no emblem)
-            # results in HTTP 200, but a JSON explaining the error instead of an SVG image.
-            # Storing this JSON and uploading it to TS just fails silently without
-            # causing any problems! 
-            with open(icon_file_name, "wb") as fh:
-                icon = requests.get(icon_url)
-                fh.write(icon.content)
-            with open(icon_file_name, "rb") as fh:
-                try:
-                    # it is important to have acquired the lock for the ts3conn globally 
-                    # at this point, as we directly pass the wrapped connection around
-                    upload = ts3.filetransfer.TS3FileTransfer(ts3conn.ts_connection)
-                    res = upload.init_upload(fh, icon_server_path, 0)
-                except ts3.query.TS3QueryError as tqe:
-                    print(tqe)
-                except KeyError as ke:
-                    if not str(ke).find("'port'"): # only way I've found to check what attribute is missing...
-                        # print("error is ", str(ke), str(ke).find("'port'"))
-                        raise ke 
-                    else:
-                        # if we get a KeyError for 'port', something has gone wrong earlier down the line,
-                        # which the TS3 library failed to check. Passing an image that is too big has been
-                        # a problem during development.
-                        TS3Auth.log("Error while trying to upload the guild icon for guild %s [%s]. It has a size of %s, is that maybe more than the admitted file size?" % (name, tag, os.stat(icon_file_name).st_size))
-            os.remove(icon_file_name)
 
-            TS3Auth.log("Icon complete.")
+            #Icon uploading
+            icon_id = self.handle_guild_icon(name, ts3conn) #Returns None if no icon
+
             ##################################
             # CREATE CHANNEL AND SUBCHANNELS #
             ##################################
@@ -727,7 +683,7 @@ class Bot:
 
             cinfo, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate"
                                                     , channel_name = channelname
-                                                    , channel_description = description
+                                                    , channel_description = channel_description
                                                     , cpid = pid
                                                     , channel_flag_permanent = 1
                                                     , channel_maxclients = 0
@@ -738,9 +694,11 @@ class Bot:
             perms = [("i_channel_needed_join_power", 25),
                      ("i_channel_needed_subscribe_power", 25),
                      ("i_channel_needed_modify_power", 45),
-                     ("i_channel_needed_delete_power", 75),
-                     ("i_icon_id", icon_id)
+                     ("i_channel_needed_delete_power", 75)
                     ]
+
+            if icon_id is not None:
+                perms.append(("i_icon_id", icon_id))
 
             def channeladdperm(cid, permsid, permvalue):
                         return ts3conn.ts3exec(lambda tsc: tsc.exec_("channeladdperm"
@@ -789,14 +747,18 @@ class Bot:
                                                         , permskip = 0)
                                     , signal_exception_handler)
 
-        perms = [("i_icon_id", icon_id), 
-                 ("b_group_is_permanent", icon_id), 
-                 ("i_group_show_name_in_tree", 1),
-                 ("i_group_sort_id", 1100),
-                 ("i_group_needed_modify_power", 75),
-                 ("i_group_needed_member_add_power", 50),
-                 ("i_group_needed_member_remove_power", 50)
-                ] 
+        perms = [
+            ("b_group_is_permanent", 1),
+            ("i_group_show_name_in_tree", 1),
+            ("i_group_needed_modify_power", 75),
+            ("i_group_needed_member_add_power", 50),
+            ("i_group_needed_member_remove_power", 50),
+            ("i_group_sort_id", Config.guilds_sort_id),
+        ]
+
+        if icon_id is not None:
+            perms.append(("i_icon_id", icon_id))
+
 
         for p,v in perms:
             x,ex = servergroupaddperm(guildgroupid, p, v)
@@ -816,12 +778,8 @@ class Bot:
                 if tp < 0:
                     TS3Auth.log("Warning: talk power for guild %s is below 0." % (g.get("name")))
 
-                # sort guild groups to have users grouped by their guild tag alphabetically
+                # sort guild groups to have users grouped by their guild tag alphabetically in channels
                 x,ex = servergroupaddperm(g.get("sgid"), "i_client_talk_power", tp)
-
-                # sort guild groups to be ordered alphabetically in the context-menu
-                x,ex = servergroupaddperm(g.get("sgid"), "i_group_sort_id", Config.guilds_minimum_sort_order + i)
-
 
         ################
         # ADD CONTACTS #
@@ -858,6 +816,73 @@ class Bot:
                             TS3Auth.log("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in guild channel for %s. Maybe the uid is not valid anymore." 
                                         % (Config.guild_contact_channel_group, c, a, name))
         return SUCCESS
+
+    def handle_guild_icon(self, name, ts3conn):
+        #########################################
+        # RETRIEVE AND UPLOAD GUILD EMBLEM ICON #
+        #########################################
+        TS3Auth.log("Retrieving and uploading guild emblem as icon from gw2mists...")
+        icon_url = "https://api.gw2mists.de/guilds/emblem/%s/50.svg" % (urllib.parse.quote(name),)
+        icon = requests.get(icon_url)
+
+        # funnily enough, giving an invalid guild (or one that has no emblem)
+        # results in HTTP 200, but a JSON explaining the error instead of an SVG image.
+        # Storing this JSON and uploading it to TS just fails silently without
+        # causing any problems!
+        # Therefore checking content length..
+        if len(icon.content) > 0:
+            icon_id = binascii.crc32(name.encode('utf8'))
+
+            icon_local_file_name = "%s_icon.svg" % (urllib.parse.quote(name),)  # using name instead of tag, because tags are not unique
+            icon_server_path = "/icon_%s" % (icon_id,)
+            self.upload_icon(icon, icon_local_file_name, icon_server_path, ts3conn)
+            return icon_id
+        else:
+            TS3Auth.log("Empty Response. Guild probably has no icon. Skipping Icon upload.")
+            return None
+
+    def upload_icon(self, icon, icon_file_name, icon_server_path, ts3conn):
+        def _ts_file_upload_hook(c: ts3.response.TS3QueryResponse):
+            if (c is not None) and (c.parsed is not None) \
+                    and (len(c.parsed) == 1) and (c.parsed[0] is not None) \
+                    and "msg" in c.parsed[0].keys() and c.parsed[0]["msg"] == "invalid size":
+                from ts3.filetransfer import TS3UploadError
+                raise TS3UploadError(0, "The uploaded Icon is too large")
+            return None
+
+        with open(icon_file_name, "w+b") as fh:
+            try:
+                # svg
+                fh.write(icon.content)
+                fh.flush()
+                fh.seek(0)
+
+                # it is important to have acquired the lock for the ts3conn globally
+                # at this point, as we directly pass the wrapped connection around
+                upload = ts3.filetransfer.TS3FileTransfer(ts3conn.ts_connection)
+                res = upload.init_upload(input_file=fh,
+                                         name=icon_server_path,
+                                         cid=0,
+                                         query_resp_hook=lambda c: _ts_file_upload_hook(c))
+                TS3Auth.log(f"Icon {icon_file_name} uploaded as {icon_server_path}.")
+            except ts3.common.TS3Error as ts3error:
+                TS3Auth.log("Error Uploading icon {icon_file_name}.")
+                print(ts3error)
+            finally:
+                fh.close()
+                os.remove(icon_file_name)
+
+    def create_guild_channel_description(self, contacts, name, tag):
+        contacts = "\n".join(["    • %s" % c for c in contacts])
+        text = (f"[center]\n"
+                f"[img]https://api.gw2mists.de/guilds/emblem/{urllib.parse.quote(name)}/128.svg[/img]\n"
+                f"[size=20]{name} - {tag}[/size]\n"
+                f"[/center]\n"
+                f"[hr]\n"
+                f"[size=12]Contacts:[/size]\n"
+                f"{contacts}\n"
+                f"[hr]\n")
+        return text
 
     def clientMessageHandler(self, ipcserver, clientsocket, message):
         mtype = self.try_get(message, "type", lower = True)
