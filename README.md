@@ -14,3 +14,20 @@ NOTE: gw2api module by author 'hackedd' has been patched for Python3 now so you 
 
 
 Please copy the `bot.conf.example` to `bot.conf` and modify the variables as needed.
+
+# Docker Compose
+
+```
+version: "3.8"
+services:
+  ts-bot: 
+    build: https://github.com/ogrady/ts-gw2-verifyBot.git
+    volumes:
+     - ./bot.conf:/app/bot.conf
+     - ./BOT.db:/app/BOT.db
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+```
+
