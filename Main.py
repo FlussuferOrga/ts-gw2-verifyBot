@@ -36,7 +36,7 @@ default_server_group_id = -1
 bot_loop_forever=True
 TS3Auth.log("Initializing script....")
 while bot_loop_forever:
-    try:    
+    try:
         TS3Auth.log("Connecting to Teamspeak server...")
         with ThreadsafeTSConnection(Config.user
                                     , Config.passwd
@@ -44,13 +44,19 @@ while bot_loop_forever:
                                     , Config.port
                                     , Config.keepalive_interval
                                     , Config.server_id
-                                    , Config.bot_nickname) as ts3conn:         
+                                    , Config.bot_nickname) as ts3conn:
             BOT=Bot(Config.db_file_name, ts3conn, Config.verified_group, Config.bot_nickname)
-            IPCS=ipc.TwistedServer(Config.ipc_port, ts3conn, client_message_handler = BOT.clientMessageHandler)
 
+            ipcIsPublic = os.getenv("IPC_PUBLIC","false").lower() in ['true', '1', 'y', 'yes']
+            if ipcIsPublic:
+                TS3Auth.log("WARNING: The IPC socket is open to the network, this is only ok in isolated and/or "
+                            "secure environments")
+            IPCS=ipc.TwistedServer(Config.ipc_port, ts3conn,
+                                   client_message_handler = BOT.clientMessageHandler,
+                                   local_only=not ipcIsPublic)
             ipcthread = Thread(target = IPCS.run)
             ipcthread.daemon = True
-            ipcthread.start() 
+            ipcthread.start()
             TS3Auth.log ("BOT loaded into server (%s) as %s (%s). Nickname '%s'" %(Config.server_id, BOT.name, BOT.client_id, BOT.nickname))
 
             # Find the verify channel
@@ -62,7 +68,7 @@ while bot_loop_forever:
                     time.sleep(10)
                 else:
                     verify_channel_id=channel.get("cid")
-                    channel_name=channel.get("channel_name")                  
+                    channel_name=channel.get("channel_name")
 
             # Find the verify group ID
             verified_group_id = BOT.groupFind(Config.verified_group)
@@ -75,8 +81,8 @@ while bot_loop_forever:
             if chnl_err:
                 TS3Auth.log("BOT Attempted to join channel '%s' (%s) WARN: %s" % (Config.channel_name, verify_channel_id, chnl_err.resp.error["msg"]))
             else:
-                TS3Auth.log ("BOT has joined channel '%s' (%s)." % (Config.channel_name, verify_channel_id))             
-            
+                TS3Auth.log ("BOT has joined channel '%s' (%s)." % (Config.channel_name, verify_channel_id))
+
             ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="textchannel")) #alert channel chat
             ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="textprivate")) #alert Private chat
             ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="server"))
@@ -108,11 +114,11 @@ while bot_loop_forever:
             """
             testguilds = [("Unleash Chaos", "uC", "uC")
                         , ("Requiem of Execution", "RoE", "RoE")
-                        , ("Zum Henker", "ZH", "ZH") 
+                        , ("Zum Henker", "ZH", "ZH")
                         , ("Formation Wolke", "Zerg", "Zerg.")
                         , ("Zergs Rebellion", "Zerg", "Zerg")
                         , ("Flussufer Beach Boys", "FBB", "FBB")
-                        , ("Ups Falsche Taste", "UPS", "UPS")   
+                        , ("Ups Falsche Taste", "UPS", "UPS")
                         , ("Rising River", "Side", "Side")
                         , ("Demons of Dawn", "DoD", "DoD")]
 
