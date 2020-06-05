@@ -5,3 +5,4 @@ schedule==0.3.2
 ts3>=2.0.0b2
 deprecation
 Twisted
+bottle==0.12.18

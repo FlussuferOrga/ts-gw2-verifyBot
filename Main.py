@@ -1,4 +1,7 @@
 #!/usr/bin/python
+import threading
+from multiprocessing.context import Process
+
 import ts3 #teamspeak library
 import time #time for sleep function
 import re #regular expressions
@@ -12,6 +15,18 @@ from TS3Bot import *
 from threading import Thread
 import sys
 import ipc
+
+#######################################
+# Bottle
+#######################################
+from bottle import Bottle
+app = Bottle()
+app.route(path='/',callback=lambda : "OK")  # health probe
+httpPort = int(os.getenv('HTTP_PORT', 8080))
+http_bind = os.getenv('HTTP_BIND', 'localhost')
+t = threading.Thread(target=app.run, kwargs={'host': http_bind, 'port': httpPort})
+t.daemon = True
+t.start()
 
 #######################################
 # Begins the connect to Teamspeak
@@ -132,7 +147,7 @@ while bot_loop_forever:
         time.sleep(Config.bot_sleep_conn_lost)
     except (KeyboardInterrupt, SystemExit):
         bot_loop_forever = False
+        app.close()
         sys.exit(0)
 
 #######################################
-
