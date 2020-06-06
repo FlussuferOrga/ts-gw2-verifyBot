@@ -1,6 +1,9 @@
 import configparser # parse in configuration
 import ast #eval a string to a list/boolean (for cmd_list from 'bot settings' or DEBUG from config)
 import bot_messages
+import Logger
+
+log = Logger.getLogger()
 
 #######################################
 #### Load Configs
@@ -13,7 +16,7 @@ def tryGet(config, section, key, default = None, lit_eval = False):
         if lit_eval: 
             val = ast.literal_eval(val)
     except configparser.NoOptionError:
-        TS3Auth.log("No config setting '%s' found in the section [%s]. Falling back to '%s'." % (key, section, str(default)))
+        log.warning("No config setting '%s' found in the section [%s]. Falling back to '%s'.", key, section, str(default))
         val = default 
     return val
 
@@ -85,4 +88,4 @@ DEBUG = ast.literal_eval(configs.get("DEBUGGING","DEBUG")) # Debugging (on or of
 # Convenience 
 locale = bot_messages.getLocale(locale_setting)
 if bot_sleep_idle > 300:
-    TS3Auth.log("WARNING: setting bot_sleep_idle to a value higher than 300 seconds could result in timeouts!")
+    log.warning("Setting bot_sleep_idle to a value higher than 300 seconds could result in timeouts!")

@@ -15,6 +15,9 @@ from TS3Bot import *
 from threading import Thread
 import sys
 import ipc
+import Logger
+
+log = Logger.getLogger()
 
 #######################################
 # Bottle
@@ -34,10 +37,10 @@ t.start()
 default_server_group_id = -1
 
 bot_loop_forever=True
-TS3Auth.log("Initializing script....")
+log.info("Initializing script....")
 while bot_loop_forever:
     try:
-        TS3Auth.log("Connecting to Teamspeak server...")
+        log.info("Connecting to Teamspeak server...")
         with ThreadsafeTSConnection(Config.user
                                     , Config.passwd
                                     , Config.host
@@ -49,7 +52,7 @@ while bot_loop_forever:
 
             ipcIsPublic = os.getenv("IPC_PUBLIC","false").lower() in ['true', '1', 'y', 'yes']
             if ipcIsPublic:
-                TS3Auth.log("WARNING: The IPC socket is open to the network, this is only ok in isolated and/or "
+                log.warn("The IPC socket is open to the network, this is only ok in isolated and/or "
                             "secure environments")
             IPCS=ipc.TwistedServer(Config.ipc_port, ts3conn,
                                    client_message_handler = BOT.clientMessageHandler,
@@ -57,14 +60,14 @@ while bot_loop_forever:
             ipcthread = Thread(target = IPCS.run)
             ipcthread.daemon = True
             ipcthread.start()
-            TS3Auth.log ("BOT loaded into server (%s) as %s (%s). Nickname '%s'" %(Config.server_id, BOT.name, BOT.client_id, BOT.nickname))
+            log.info("BOT loaded into server (%s) as %s (%s). Nickname '%s'", Config.server_id, BOT.name, BOT.client_id, BOT.nickname)
 
             # Find the verify channel
             verify_channel_id=0
             while verify_channel_id == 0:
                 channel, ex = ts3conn.ts3exec(lambda tc: tc.query("channelfind", pattern=Config.channel_name).first(), signal_exception_handler)
                 if ex:
-                    TS3Auth.log ("Unable to locate channel with name '%s'. Sleeping for 10 seconds..." % (Config.channel_name,))
+                    log.warn("Unable to locate channel with name '%s'. Sleeping for 10 seconds...", Config.channel_name)
                     time.sleep(10)
                 else:
                     verify_channel_id=channel.get("cid")
@@ -79,9 +82,9 @@ while bot_loop_forever:
             # Move ourselves to the Verify chanel and register for text events
             _, chnl_err = ts3conn.ts3exec(lambda tc: tc.exec_("clientmove", clid=BOT.client_id, cid=verify_channel_id))
             if chnl_err:
-                TS3Auth.log("BOT Attempted to join channel '%s' (%s) WARN: %s" % (Config.channel_name, verify_channel_id, chnl_err.resp.error["msg"]))
+                log.warn("BOT Attempted to join channel '%s' (%s): %s", Config.channel_name, verify_channel_id, chnl_err.resp.error["msg"])
             else:
-                TS3Auth.log ("BOT has joined channel '%s' (%s)." % (Config.channel_name, verify_channel_id))
+                log.info("BOT has joined channel '%s' (%s).", Config.channel_name, verify_channel_id)
 
             ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="textchannel")) #alert channel chat
             ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="textprivate")) #alert Private chat
@@ -89,9 +92,9 @@ while bot_loop_forever:
 
             #Send message to the server that the BOT is up
             # ts3conn.exec_("sendtextmessage", targetmode=3, target=server_id, msg=locale.get("bot_msg",(bot_nickname,)))
-            TS3Auth.log("BOT is now registered to receive messages!")
+            log.info("BOT is now registered to receive messages!")
 
-            TS3Auth.log("BOT Database Audit policies initiating.")
+            log.info("BOT Database Audit policies initiating.")
             # Always audit users on initialize if user audit date is up (in case the script is reloaded several times before audit interval hits, so we can ensure we maintain user database accurately)
             BOT.auditUsers()
 
@@ -127,7 +130,7 @@ while bot_loop_forever:
             #    BOT.createGuild(gname, gtag, ggroup, ["len.1879", "jey.1111"])
 
             #Forces script to loop forever while we wait for events to come in, unless connection timed out. Then it should loop a new bot into creation.
-            TS3Auth.log("BOT now idle, waiting for requests.")
+            log.info("BOT now idle, waiting for requests.")
             while ts3conn.ts3exec(lambda tc: tc.is_connected(), signal_exception_handler)[0]:
                 #auditjob + keepalive check
                 schedule.run_pending()
@@ -143,13 +146,13 @@ while bot_loop_forever:
                         else:
                             BOT.loginEventHandler(event)
                     except Exception as ex:
-                        TS3Auth.log("Error while trying to handle event %s: %s" % (str(event), str(ex)))
+                        log.error("Error while trying to handle event %s: %s", str(event), str(ex))
 
-        TS3Auth.log("It appears the BOT has lost connection to teamspeak. Trying to restart connection in %s seconds...." % Config.bot_sleep_conn_lost)
+        log.warning("It appears the BOT has lost connection to teamspeak. Trying to restart connection in %s seconds....", Config.bot_sleep_conn_lost)
         time.sleep(Config.bot_sleep_conn_lost)
 
     except (ConnectionRefusedError, ts3.query.TS3TransportError):
-        TS3Auth.log("Unable to reach teamspeak server..trying again in %s seconds..." % Config.bot_sleep_conn_lost)
+        log.warning("Unable to reach teamspeak server..trying again in %s seconds...", Config.bot_sleep_conn_lost)
         time.sleep(Config.bot_sleep_conn_lost)
     except (KeyboardInterrupt, SystemExit):
         bot_loop_forever = False

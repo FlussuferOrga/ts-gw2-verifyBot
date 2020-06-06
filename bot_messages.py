@@ -3,6 +3,9 @@
 #######################################
 import TS3Auth
 import re
+import Logger
+
+log = Logger.getLogger()
 
 class Locale(object):
   def __init__(self, fallback = None):
@@ -25,7 +28,7 @@ class Locale(object):
     try:
       tpl = tpl % args
     except TypeError:
-      TS3Auth.log("Could not insert all %d arguments into the string with key '%s' of locale %s. I will not insert any arguments at all." % (len(args), key, self.__class__.__name__))
+      log.error("Could not insert all %d arguments into the string with key '%s' of locale %s. I will not insert any arguments at all.", len(args), key, self.__class__.__name__)
     return tpl
 
   def set(self, key, value):
