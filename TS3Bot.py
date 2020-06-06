@@ -314,8 +314,8 @@ class Bot:
                 # BOT INFO
                 self.dbc.cursor.execute('''CREATE TABLE bot_info(version text, last_succesful_audit date)''')
                 self.dbc.conn.commit()
-                #self.dbc.cursor.execute('INSERT INTO bot_info (version, last_succesful_audit) VALUES (?,?)', (current_version, datetime.date.today(), ))
-                #self.dbc.conn.commit()
+                self.dbc.cursor.execute('INSERT INTO bot_info (version, last_succesful_audit) VALUES (?,?)', (Config.current_version, datetime.date.today(), ))
+                self.dbc.conn.commit()
                 # GUILD INFO
                 self.dbc.cursor.execute('''CREATE TABLE guilds(
                                 guild_id integer primary key autoincrement, 
