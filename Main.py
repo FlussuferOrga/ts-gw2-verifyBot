@@ -15,16 +15,58 @@ from TS3Bot import *
 from threading import Thread
 import sys
 import ipc
+from bottle import Bottle, request, response
 import Logger
+
+def try_get(dictionary, key, lower = False, typer = lambda x: x, default = None):
+    v = typer(dictionary[key] if key in dictionary else default)
+    return v.lower() if lower and isinstance(v, str) else v 
 
 log = Logger.getLogger()
 
 #######################################
 # Bottle
 #######################################
-from bottle import Bottle
+
 app = Bottle()
-app.route(path='/',callback=lambda : "OK")  # health probe
+app.route(path="/health",callback=lambda : "OK")  # health probe
+
+@app.post("/resetroster")
+def resetRoster():
+    body = json.loads(request.body.read().decode("utf-8"))
+    date = try_get(body, "date", default = "dd.mm.yyyy")
+    red = try_get(body, "rbl", default = [])
+    green = try_get(body, "gbl", default = [])
+    blue = try_get(body, "bbl", default = [])
+    ebg = try_get(body, "ebg", default = [])
+    # BOT.setResetroster(ipcserver.ts_connection, date, red, green, blue, ebg)
+    # FIXME: reply    
+    # abort(code, message) or return {...}
+
+@app.post("/guild")
+def createGuild():
+    body = json.loads(request.body.read().decode("utf-8"))
+    name = try_get(body, "name", default = None)
+    tag = try_get(body, "tag", default = None)
+    groupname = try_get(body, "tsgroup", default = mtag)
+    contacts = try_get(body, "contacts", default = [])
+    #res = -1 if name is None or tag is None else self.createGuild(name, tag, groupname, contacts)
+    #clientsocket.respond(mid, mcommand, {"status": res})       
+
+@app.delete("/guild")
+def deleteGuild():
+    body = json.loads(request.body.read().decode("utf-8"))
+    name = try_get(body, "name", default = None)
+    # res = self.removeGuild(name)
+    # clientsocket.respond(mid, mcommand, {"status": res})
+
+@app.delete("/registration")
+def deleteRegistration():
+    body = json.loads(request.body.read().decode("utf-8"))
+    gw2account = try_get(args,"gw2account", default = "")
+    # changes = self.removePermissionsByGW2Account(mgw2account)
+    # clientsocket.respond(mid, mcommand, {"deleted": changes})
+
 httpPort = int(os.getenv('HTTP_PORT', 8080))
 http_bind = os.getenv('HTTP_BIND', 'localhost')
 t = threading.Thread(target=app.run, kwargs={'host': http_bind, 'port': httpPort})
