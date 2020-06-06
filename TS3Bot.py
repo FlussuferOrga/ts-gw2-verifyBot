@@ -36,7 +36,7 @@ def default_exception_handler(ex):
 
 def ignore_exception_handler(ex):
     ''' acts as if no exception was raised, equivalent to except: pass'''
-    return None 
+    return None
 
 def signal_exception_handler(ex):
     ''' returns the exception without printing it, useful for expected exceptions, signaling that an exception occurred '''

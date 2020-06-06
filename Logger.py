@@ -1,7 +1,8 @@
 import logging
 import inspect
 
-def getLogger(name = None, file = "ts3bot.log", level = logging.DEBUG):
+
+def getLogger(name = None, file = "ts3bot.log", level = logging.DEBUG, generate_name = True):
     '''
     Retrieves a specific logger with fixed configuration.
     The philosophy behind logging is explained in https://docs.python.org/3/howto/logging.html
@@ -23,21 +24,29 @@ def getLogger(name = None, file = "ts3bot.log", level = logging.DEBUG):
             see https://docs.python.org/3/_images/logging_flow.png
             Setting this to something above DEBUG can help when dealing with 
             excessive log output.
+    generate_name: Automatically generates a name for the logger based on the calling module if name is not given.
     '''
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
 
-    if not name:
+    if not name and generate_name:
         try:
             frame = inspect.stack()[1]
-            name = inspect.getmodule(frame[0])
-        except IndexError:
+            name = inspect.getmodule(frame[0]).__name__
+        except:
             name = "ROOT"
 
-    for h,l in ((logging.StreamHandler(), logging.WARNING), (logging.FileHandler(file), logging.DEBUG)):
-        h.setLevel(l)
-        h.setFormatter(formatter)
-        logger.addHandler(h)  
+    logger = logging.getLogger(name)
+
+    if not logger.hasHandlers():
+        # initialize handlers
+        logger.setLevel(level)
+        for h,l in ((logging.StreamHandler(), logging.WARNING), (logging.FileHandler(file), logging.DEBUG)):
+            h.setLevel(l)
+            h.setFormatter(formatter)
+            logger.addHandler(h)  
 
     return logger
+
+# set default logger to the log file
+# this also provides logging messages from other modules i.e. ts3.
+getLogger(generate_name=False) 
