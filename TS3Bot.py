@@ -310,9 +310,9 @@ class Bot:
             log.info("No User Database found...created new database!")
             with self.dbc.lock:
                 # USERS
-                self.dbc.cursor.execute('''CREATE TABLE users(ts_db_id text primary key, account_name text, api_key text, created_date date, last_audit_date date)''')
+                self.dbc.cursor.execute("CREATE TABLE users(ts_db_id text primary key, account_name text, api_key text, created_date date, last_audit_date date)")
                 # BOT INFO
-                self.dbc.cursor.execute('''CREATE TABLE bot_info(version text, last_succesful_audit date)''')
+                self.dbc.cursor.execute("CREATE TABLE bot_info(version text, last_succesful_audit date)")
                 self.dbc.conn.commit()
                 self.dbc.cursor.execute('INSERT INTO bot_info (version, last_succesful_audit) VALUES (?,?)', (Config.current_version, datetime.date.today(), ))
                 self.dbc.conn.commit()
@@ -343,7 +343,7 @@ class Bot:
             client_id = self.getActiveTsUserID(client_unique_id)
             client_exists = self.dbc.cursor.execute("SELECT * FROM users WHERE ts_db_id=?",  (client_unique_id,)).fetchall()
             if len(client_exists) > 1:
-                log.warning("Found multipe database entries for single unique teamspeakid %s.", client_unique_id)
+                log.warning("Found multiple database entries for single unique teamspeakid %s.", client_unique_id)
             if len(client_exists) != 0: # If client TS database id is in BOT's database.
                 self.dbc.cursor.execute("""UPDATE users SET ts_db_id=?, account_name=?, api_key=?, created_date=?, last_audit_date=? WHERE ts_db_id=?""", (client_unique_id, account_name, api_key, created_date, last_audit_date, client_unique_id))
                 log.info("Teamspeak ID %s already in Database updating with new Account Name '%s'. (likely permissions changed by a Teamspeak Admin)", client_unique_id, account_name)
