@@ -10,7 +10,7 @@ from twisted.internet import reactor
 from twisted.internet.protocol import Protocol, ServerFactory
 from twisted.internet.endpoints import TCP4ServerEndpoint
 
-from flask import Flask, request # Flask, request #, response
+from flask import Flask, request, Response, abort
 import waitress # productive serve
 import os # operating system commands -check if files exist
 
@@ -38,6 +38,11 @@ class HTTPServer(Flask):
         t.daemon = True
         t.start()
 
+    def stop(self):
+        pass # fixme: stop waitress
+
+
+
 def createHTTPServer(bot, host = "localhost", port = 8080):
     app = HTTPServer(bot, host, port)
     @app.route("/health", methods = ["GET"])
@@ -54,7 +59,7 @@ def createHTTPServer(bot, host = "localhost", port = 8080):
         ebg = try_get(body, "ebg", default = [])
         log.info("Received request to set resetroster. RBL: %s GBL: %s, BBL: %s, EBG: %s" % (", ".join(red), ", ".join(green), ", ".join(blue), ", ".join(ebg)))
         res = app.bot.setResetroster(bot.ts_connection, date, red, green, blue, ebg)
-        return "OK" if res == 0 else abort(400, res)
+        return Response("OK", "text") if res == 0 else abort(400, res)
 
     @app.route("/guild", methods = ["POST"])
     def createGuild():
@@ -82,6 +87,11 @@ def createHTTPServer(bot, host = "localhost", port = 8080):
         log.info("Received request to delete user '%s' from the TS registration database.", gw2account)
         changes = app.bot.removePermissionsByGW2Account(gw2account)
         return {"changes": changes}
+
+    @app.route("/commanders", methods = ["GET"])
+    def activeCommanders():
+        acs = app.bot.getActiveCommanders()
+        return acs if acs is not None else abort(503, "")
 
     return app
 

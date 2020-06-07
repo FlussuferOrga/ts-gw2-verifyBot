@@ -218,7 +218,8 @@ class Bot:
         self.verified_group = verified_group
         self.vgrp_id = self.groupFind(verified_group)
         self.getUserDatabase()
-        self.c_audit_date = datetime.date.today() # Todays Date
+        self.c_audit_date = datetime.date.today()
+        self.commander_checker = CommanderChecker(self, Config.poll_group_names)
 
     #Helps find the group ID for a group name
     def groupFind(self, group_to_find):
@@ -515,7 +516,8 @@ class Bot:
                 if ts3qe is not None and ts3qe.resp.error["id"] == "771":
                     # channel name already in use
                     # probably not a bug (channel still unused), but can be a config problem
-                    log.info("Channel '%s' already exists. This is probably not a problem. Skipping.", newname)      
+                    log.info("Channel '%s' already exists. This is probably not a problem. Skipping.", newname)   
+        return 0   
 
 
     def getGuildInfo(self, guildname):
@@ -526,6 +528,9 @@ class Bot:
         '''
         ids = request("https://api.guildwars2.com/v2/guild/search?name=%s" % (urllib.parse.quote(guildname),))
         return None if ids is None or len(ids) == 0 else request("https://api.guildwars2.com/v2/guild/%s" % (ids[0]))
+
+    def getActiveCommanders(self):
+        return self.commander_checker.execute()
 
     def removeGuild(self, name):
         '''
@@ -1131,11 +1136,10 @@ class User(object):
 
 #######################################
 
-class CommanderChecker(Ticker):
-    def __init__(self, ts3bot, ipcserver, commander_group_names, interval = 60):
-        super(CommanderChecker, self).__init__(ts3bot, interval)
+class CommanderChecker(object):
+    def __init__(self, ts3bot, commander_group_names):
         self.commander_group_names = commander_group_names
-        self.ipcserver = ipcserver
+        self.ts3bot = ts3bot
 
         cgroups = list(filter(lambda g: g.get("name") in commander_group_names, self.ts3bot.ts_connection.ts3exec(lambda t: t.query("channelgrouplist").all())[0]))
         if len(cgroups) < 1:
@@ -1157,20 +1161,14 @@ class CommanderChecker(Ticker):
             return command.all()            
 
         acs, ts3qe = self.ts3bot.ts_connection.ts3exec(retrieve_commanders, signal_exception_handler)
-        if ts3qe: # check for .resp, could by another exception type
+        if ts3qe: # check for .resp, could be another exception type
             if ts3qe.resp is not None:
                 if ts3qe.resp.error["id"] != "1281":
-                    print(ts3qe.resp.error["id"])
-                    print(type(ts3qe.resp.error["id"]))
-                    print(ts3qe.resp.error["id"] == "1281")
                     # 1281 is "database empty result set", which is an expected error
                     # if not a single user currently wears a tag.
                     log.error("Error while trying to resolve active commanders: %s.", str(ts3qe))
             else:
-                print(ts3qe)
-                print(ts3qe.resp)
-                print(ts3qe.resp.error["id"])
-                print(ts3qe.resp.error)
+                log.error(ts3qe)
         else:
             active_commanders_entries = [(c, self.ts3bot.getUserDBEntry(self.ts3bot.getTsUniqueID(c.get("cldbid")))) for c in acs]
             for ts_entry, db_entry in active_commanders_entries:
@@ -1187,7 +1185,6 @@ class CommanderChecker(Ticker):
                             log.warning("Could not determine information for commanding user with ID %s: '%s'. Skipping." % (str(ts_entry), ", ".join([str(e) for e in [ex1,ex2] if e is not None])))
                         else:
                             active_commanders.append(ac)
-        # print({"commanders": active_commanders})
-        self.ipcserver.broadcast({"commanders": active_commanders})
+        return {"commanders": active_commanders}
 
 #######################################

@@ -103,9 +103,6 @@ ipc_port = 10137
 # Group that is polled and sent via IPC regularly
 poll_group_names = ['Active Raidlead']
 
-# Seconds between group polls
-poll_group_poll_delay = 60
-
 #######################################
 
 #######################################

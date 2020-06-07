@@ -42,19 +42,21 @@ while bot_loop_forever:
                                     , Config.bot_nickname) as ts3conn:
             BOT=Bot(Config.db_file_name, ts3conn, Config.verified_group, Config.bot_nickname)
 
-            httpserver = ipc.createHTTPServer(BOT)
+            httpserver = ipc.createHTTPServer(BOT, port= Config.ipc_port)
             httpserver.start()
 
             ipcIsPublic = os.getenv("IPC_PUBLIC","false").lower() in ['true', '1', 'y', 'yes']
             if ipcIsPublic:
                 log.warn("The IPC socket is open to the network, this is only ok in isolated and/or "
                             "secure environments")
+            """
             IPCS=ipc.TwistedServer(Config.ipc_port, ts3conn,
                                    client_message_handler = BOT.clientMessageHandler,
                                    local_only=not ipcIsPublic)
             ipcthread = Thread(target = IPCS.run)
             ipcthread.daemon = True
             ipcthread.start()
+            """
             log.info("BOT loaded into server (%s) as %s (%s). Nickname '%s'", Config.server_id, BOT.name, BOT.client_id, BOT.nickname)
 
             # Find the verify channel
@@ -99,11 +101,13 @@ while bot_loop_forever:
             #Since v2 of the ts3 library, keepalive must be sent manually to not screw with threads
             schedule.every(Config.keepalive_interval).seconds.do(lambda: ts3conn.ts3exec(lambda tc: tc.send_keepalive))
 
-            commander_checker = CommanderChecker(BOT, IPCS, Config.poll_group_names, Config.poll_group_poll_delay)
+            """
+            commander_checker = CommanderChecker(BOT, Config.poll_group_names, Config.poll_group_poll_delay)
 
             #Set schedule to advertise broadcast message in channel
             if Config.timer_msg_broadcast > 0:
                     schedule.every(Config.timer_msg_broadcast).seconds.do(BOT.broadcastMessage)
+            """
             BOT.broadcastMessage() # Send initial message into channel
 
             # debug
@@ -151,7 +155,7 @@ while bot_loop_forever:
         time.sleep(Config.bot_sleep_conn_lost)
     except (KeyboardInterrupt, SystemExit):
         bot_loop_forever = False
-        app.close()
+        httpserver.stop()
         sys.exit(0)
 
 #######################################

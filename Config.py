@@ -63,7 +63,6 @@ required_level = configs.get("auth settings","required_level")
 ipc_port = int(configs.get("ipc settings","ipc_port"))
 
 poll_group_names = ast.literal_eval(configs.get("ipc settings","poll_group_names"))
-poll_group_poll_delay = int(configs.get("ipc settings","poll_group_poll_delay"))
 
 # Reset Roster
 reset_top_level_channel = ast.literal_eval(configs.get("reset roster", "reset_top_level_channel"))
