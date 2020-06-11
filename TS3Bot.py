@@ -613,7 +613,7 @@ class Bot:
         INVALID_PARAMETERS = 5
 
         if (name is None or tag is None or groupname is None or contacts is None
-            or len(name) < 3 or len(tag) < 2 or len(groupname) < 3
+            or len(name) < 3 or len(tag) < 2 or len(groupname) < 2
             or not isinstance(contacts, list)):
             return INVALID_PARAMETERS
 
