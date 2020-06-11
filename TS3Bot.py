@@ -696,26 +696,28 @@ class Bot:
                                                     , channel_flag_maxclients_unlimited = 0)
                                         .first(), signal_exception_handler)
 
-            perms = [("i_channel_needed_join_power", 25),
-                     ("i_channel_needed_subscribe_power", 25),
-                     ("i_channel_needed_modify_power", 45),
-                     ("i_channel_needed_delete_power", 75)
-                    ]
+            guild_channel_perms = [
+                ("i_channel_needed_join_power", 25),
+                ("i_channel_needed_subscribe_power", 25),
+                ("i_channel_needed_modify_power", 45),
+                ("i_channel_needed_delete_power", 75)
+              ]
 
+            perms = guild_channel_perms.copy()
             if icon_id is not None:
                 perms.append(("i_icon_id", icon_id))
 
-            def channeladdperm(cid, permsid, permvalue):
-                        return ts3conn.ts3exec(lambda tsc: tsc.exec_("channeladdperm"
-                                                            , cid = cid
-                                                            , permsid = permsid
-                                                            , permvalue = permvalue
-                                                            , permnegated = 0
-                                                            , permskip = 0)
+            def channelApplyPermissions(cid,perms):
+                for p,v in perms:
+                    _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeladdperm"
+                                                              , cid =cid
+                                                              , permsid =p
+                                                              , permvalue =v
+                                                              , permnegated = 0
+                                                              , permskip = 0)
                                         , signal_exception_handler)
 
-            for p,v in perms:
-                _, ex = channeladdperm(cinfo.get("cid"), p, v)
+            channelApplyPermissions(cinfo.get("cid"), perms)
 
             for c in Config.guild_sub_channels:
                 # FIXME: error check
@@ -724,6 +726,7 @@ class Bot:
                                                                 , cpid = cinfo.get("cid")
                                                                 , channel_flag_permanent = 1)
                                                     .first(), signal_exception_handler)
+                channelApplyPermissions(res.get("cid"), guild_channel_perms)
 
         ###################
         # CREATE DB GROUP #
