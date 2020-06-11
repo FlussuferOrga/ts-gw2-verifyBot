@@ -21,7 +21,7 @@ Please copy the `bot.conf.example` to `bot.conf` and modify the variables as nee
 version: "3.8"
 services:
   ts-bot: 
-    build: https://github.com/ogrady/ts-gw2-verifyBot.git
+    build: https://github.com/FlussuferOrga/ts-gw2-verifyBot.git
     volumes:
      - ./bot.conf:/app/bot.conf
      - ./BOT.db:/app/BOT.db
