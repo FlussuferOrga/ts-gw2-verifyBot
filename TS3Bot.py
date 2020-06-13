@@ -415,8 +415,9 @@ class Bot:
                             self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupaddclient", sgid = ts_groups[ts_group], cldbid = client_db_id))
 
     def auditUsers(self):
-        import threading
-        threading.Thread(target=self._auditUsers).start()
+        log.info("Auditing users")
+        #import threading
+        #threading.Thread(target=self._auditUsers).start()
 
     def _auditUsers(self):
         self.c_audit_date = datetime.date.today() #Update current date everytime run
