@@ -269,7 +269,7 @@ class Bot:
             if Config.purge_completely:
                 # FIXME: remove channel groups as well
                 assigned_groups, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid = client_db_id).all())
-                    if assigned_groups is not None:
+                if assigned_groups is not None:
                     for g in assigned_groups:
                         if g.get("name") not in Config.purge_whitelist:
                             self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid = g.get("sgid"), cldbid = client_db_id), lambda ex: None)
