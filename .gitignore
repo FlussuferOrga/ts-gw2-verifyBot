@@ -55,3 +55,9 @@ __pycache__
 
 # Databases
 *.db
+
+# Python venv
+venv
+
+#Jetbrains IDE Settings
+.idea
