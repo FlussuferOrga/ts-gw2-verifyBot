@@ -416,14 +416,14 @@ class Bot:
 
     def auditUsers(self):
         log.info("Auditing users")
-        #import threading
-        #threading.Thread(target=self._auditUsers).start()
+        import threading
+        threading.Thread(target=self._auditUsers).start()
 
     def _auditUsers(self):
         self.c_audit_date = datetime.date.today() #Update current date everytime run
         self.db_audit_list = []
         with self.dbc.lock:
-            self.dbc.cursor.execute('SELECT * FROM users').fetchall()
+            self.db_audit_list = self.dbc.cursor.execute('SELECT * FROM users').fetchall()
         for audit_user in self.db_audit_list:
 
             #Convert to single variables
