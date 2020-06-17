@@ -1,32 +1,23 @@
-import socket
-import json
 import threading
-import schedule
-import types
-from abc import ABC, abstractmethod
-import selectors
-from twisted.internet import task
-from twisted.internet import reactor
-from twisted.internet.protocol import Protocol, ServerFactory
-from twisted.internet.endpoints import TCP4ServerEndpoint
 
-from flask import Flask, request, Response, abort
-import waitress # productive serve
-import os # operating system commands -check if files exist
+import waitress  # productive serve
+from flask import Flask, abort, request
 
 import Logger
 
 log = Logger.getLogger()
 
+
 def try_get(dictionary, key, lower = False, typer = lambda x: x, default = None):
     v = typer(dictionary[key] if key in dictionary else default)
-    return v.lower() if lower and isinstance(v, str) else v 
+    return v.lower() if lower and isinstance(v, str) else v
+
 
 class HTTPServer(Flask):
     def __init__(self, bot, host, port):
         super().__init__(__name__)
         self.bot = bot
-        self.host = host 
+        self.host = host
         self.port = port
 
     def start(self):
@@ -34,17 +25,17 @@ class HTTPServer(Flask):
         # waitress being posted twice. I am not sure if the routes are also set twice,
         # but other users have reported this behavior as well, so I not taking any chances here.
         # https://stackoverflow.com/a/57074705
-        t = threading.Thread(target = waitress.serve, kwargs = { "app": self, "port": self.port})
+        t = threading.Thread(target = waitress.serve, kwargs = {"app": self, "port": self.port})
         t.daemon = True
         t.start()
 
     def stop(self):
-        pass # fixme: stop waitress
-
+        pass  # fixme: stop waitress
 
 
 def createHTTPServer(bot, host = "localhost", port = 8080):
     app = HTTPServer(bot, host, port)
+
     @app.route("/health", methods = ["GET"])
     def health():
         return "OK"
@@ -83,7 +74,7 @@ def createHTTPServer(bot, host = "localhost", port = 8080):
     @app.route("/registration", methods = ["DELETE"])
     def deleteRegistration():
         body = request.json
-        gw2account = try_get(body,"gw2account", default = "")
+        gw2account = try_get(body, "gw2account", default = "")
         log.info("Received request to delete user '%s' from the TS registration database.", gw2account)
         changes = app.bot.removePermissionsByGW2Account(gw2account)
         return {"changes": changes}
