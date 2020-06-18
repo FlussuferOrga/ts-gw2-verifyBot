@@ -17,6 +17,8 @@ import Config
 import Logger
 import TS3Auth
 from StringShortener import StringShortener
+from TS3Repository import TS3Repository
+from ThreadsafeTSConnection import ThreadsafeTSConnection, default_exception_handler, signal_exception_handler
 
 log = Logger.getLogger()
 
@@ -31,20 +33,6 @@ def request(url):
 
 
 #######################################
-def default_exception_handler(ex):
-    """ prints the trace and returns the exception for further inspection """
-    traceback.print_exc()
-    return ex
-
-
-def ignore_exception_handler(ex):
-    """ acts as if no exception was raised, equivalent to except: pass"""
-    return None
-
-
-def signal_exception_handler(ex):
-    """ returns the exception without printing it, useful for expected exceptions, signaling that an exception occurred """
-    return ex
 
 
 class ThreadsafeDBConnection(object):
@@ -55,168 +43,16 @@ class ThreadsafeDBConnection(object):
         self.lock = RLock()
 
 
-class ThreadsafeTSConnection(object):
-    RETRIES = 3
-
-    @property
-    def uri(self):
-        return "telnet://%s:%s@%s:%s" % (self._user, self._password, self._host, str(self._port))
-
-    def __init__(self, user, password, host, port, keepalive_interval=None, server_id=None, bot_nickname=None):
-        """
-        Creates a new threadsafe TS3 connection.
-        user: user to connect as
-        password: password to connect to user with
-        host: host of TS3 server
-        port: port for server queries
-        keepalive_interval: interval in which the keepalive is sent to the ts3 server
-        server_id: the server id of the TS3 server we want to address, in case we have multiple.
-                   Note that the server id HAS to be selected at some point, using the "use" command.
-                   It has just been wrapped in here to allow for more convenient copying of the
-                   TS3 connection where the appropriate server is selected automatically.
-        bot_nickname: nickname for the bot. Could be suffixed, see gentleRename. If None is passed,
-                      no naming will take place.
-        """
-        self._user = user
-        self._password = password
-        self._host = host
-        self._port = port
-        self._keepalive_interval = int(keepalive_interval)
-        self._server_id = server_id
-        self._bot_nickname = bot_nickname
-        self.lock = RLock()
-        self.ts_connection = None  # done in init()
-        self.init()
-
-    def init(self):
-        if self.ts_connection is not None:
-            try:
-                self.ts_connection.close()
-            except Exception:
-                pass  # may already be closed, doesn't matter.
-        self.ts_connection = ts3.query.TS3ServerConnection(self.uri)
-        if self._keepalive_interval is not None:
-            schedule.cancel_job(self.keepalive)  # to avoid accumulating keepalive calls during re-inits
-            schedule.every(self._keepalive_interval).seconds.do(self.keepalive)
-        if self._server_id is not None:
-            self.ts3exec(lambda tc: tc.exec_("use", sid=self._server_id))
-        if self._bot_nickname is not None:
-            self.forceRename(self._bot_nickname)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-
-    def keepalive(self):
-        self.ts3exec(lambda tc: tc.send_keepalive())
-
-    def ts3exec(self, handler, exception_handler=lambda ex: default_exception_handler(ex)):  # eh = lambda ex: print(ex)):
-        """
-        Excecutes a query() or exec_() on the internal TS3 connection.
-        handler: a function ts3.query.TS3ServerConnection -> any
-        exception_handler: a function Exception -> any. None will be interpreted as not having encountered an exception.
-                           The default handler prints the stacktrace for the exception and returns the exception itself.
-                           This changes the workflow of executing erroring code: instead of try-catching we need to
-                           decompose the tuple returned from this function and check if the exception result is anything
-                           but None. E.g.:
-
-                            try:
-                               res = ts3con.query(...)
-                            except Exception as ex:
-                                # error handling
-
-                           becomes
-
-                            res,ex = threadsafe_ts3con.ts3exec(lambda tc: tc.query(...))
-                            if ex:
-                                # error handling
-
-                           Note that the exception handler is only executed iff an exception is actually
-                           being handled!
-
-        returns a tuple with the results of the two handlers (result first, exception result second).
-        """
-        reinit = False
-        with self.lock:
-            failed = True
-            fails = 0
-            res = None
-            exres = None
-            while failed and fails < ThreadsafeTSConnection.RETRIES:
-                failed = False
-                try:
-                    res = handler(self.ts_connection)
-                except ts3.query.TS3TransportError:
-                    failed = True
-                    fails += 1
-                    log.error("Critical error on transport level! Attempt %s to restart the connection and send the command again.", str(fails), )
-                    reinit = True
-                except Exception as ex:
-                    exres = exception_handler(ex)
-        if reinit:
-            self.init()
-        return res, exres
-
-    def close(self):
-        self.ts3exec(lambda tc: tc.close())
-
-    def copy(self):
-        tsc = ThreadsafeTSConnection(self._user, self._password, self._host, self._port, self._keepalive_interval, self._server_id, None)
-        # make sure to
-        # 1. not pass bot_nickname to the constructor, or the child (copy) would call forceRename and attempt to kick the parent
-        # 2. gently rename the copy afterwards
-        tsc.gentleRename(self._bot_nickname)
-        return tsc
-
-    def gentleRename(self, nickname):
-        """
-        Renames self to nickname, but attaches a running counter
-        to the name if the nickname is already taken.
-        """
-        i = 1
-        new_nick = "%s(%d)" % (nickname, i)
-        while not self.ts3exec(lambda tc: tc.query("clientfind", pattern=new_nick).first(), signal_exception_handler)[1]:
-            i += 1
-            new_nick = "%s(%d)" % (nickname, i)
-        new_nick = "%s(%d)" % (nickname, i)
-        self.ts3exec(lambda tc: tc.exec_("clientupdate", client_nickname=new_nick))
-        self._bot_nickname = new_nick
-        return self._bot_nickname
-
-    def forceRename(self, nickname):
-        """
-        Attempts to forcefully rename self.
-        If the chosen nickname is already taken, the bot will attempt to kick that user.
-        If that fails the bot will fall back to gentle renaming itself.
-        """
-        imposter, free = self.ts3exec(lambda tc: tc.query("clientfind", pattern=nickname).first(), signal_exception_handler)  # check if nickname is already in use
-        if not free:  # error occurs if no such user was found -> catching no exception means the name is taken
-            _, ex = self.ts3exec(lambda tc: tc.exec_("clientkick", reasonid=5, reasonmsg="Reserved Nickname", clid=imposter.get("clid")), signal_exception_handler)
-            if ex:
-                log.warning(
-                    "Renaming self to '%s' after kicking existing user with reserved name failed."
-                    " Warning: this usually only happens for serverquery logins, meaning you are running multiple bots or you"
-                    " are having stale logins from crashed bot instances on your server. Only restarts can solve the latter.",
-                    nickname)
-            else:
-                log.info("Kicked user who was using the reserved registration bot name '%s'.", nickname)
-            nickname = self.gentleRename(nickname)
-            log.info("Renamed self to '%s'.", nickname)
-        else:
-            self.ts3exec(lambda tc: tc.exec_("clientupdate", client_nickname=nickname))
-            log.info("Forcefully renamed self to '%s'.", nickname)
-        self._bot_nickname = nickname
-        return self._bot_nickname
-
-
 class Bot:
+    _ts_connection: ThreadsafeTSConnection
+    _ts_repository: TS3Repository
+
     @property
     def ts_connection(self):
         return self._ts_connection
 
-    def __init__(self, db, ts_connection, verified_group, bot_nickname="TS3BOT"):
+    def __init__(self, db, ts_connection, ts_repository, verified_group, bot_nickname="TS3BOT"):
+        self._ts_repository = ts_repository
         self._ts_connection = ts_connection
         admin_data, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("whoami").first())
         self.db_name = db
@@ -477,7 +313,8 @@ class Bot:
             self.dbc.conn.commit()
 
     def broadcastMessage(self):
-        self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("sendtextmessage", targetmode=2, target=self._ts_connection._server_id, msg=Config.locale.get("bot_msg_broadcast")))
+        broadcast_message = Config.locale.get("bot_msg_broadcast")
+        self._ts_repository.send_text_message_to_current_channel(msg=broadcast_message)
 
     def getActiveTsUserID(self, client_unique_id):
         return self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("clientgetids", cluid=client_unique_id).first().get('clid'))[0]
@@ -497,8 +334,7 @@ class Bot:
             return
 
         if self.clientNeedsVerify(raw_cluid):
-            self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("sendtextmessage", targetmode=1, target=raw_clid, msg=Config.locale.get("bot_msg_verify")),
-                                       ignore_exception_handler)  # error 516: invalid client type: another query-client logged in
+            self._ts_repository.send_text_message_to_client(raw_clid, Config.locale.get("bot_msg_verify"))
 
     def commandCheck(self, command_string):
         action = (None, None)
@@ -519,25 +355,21 @@ class Bot:
         for i in range(len(channels)):
             pattern, clean = channels[i]
             lead = leads[i]
-            chan, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern=pattern).first(), signal_exception_handler)
-            if ts3qe is not None:
-                if hasattr(ts3qe, "resp") and ts3qe.resp.error["id"] == "1281":
-                    # empty result set
-                    # no channel found for that pattern
-                    log.warning("No channel found with pattern '%s'. Skipping.", pattern)
-                else:
-                    log.error("Unexpected exception while trying to find a channel: %s", ts3qe)
-                    raise ts3qe
-            else:
-                # newname = "%s%s" % (clean, ", ".join(lead))
-                TS3_MAX_SIZE_CHANNEL_NAME = 40
-                shortened = StringShortener(TS3_MAX_SIZE_CHANNEL_NAME - len(clean)).shorten(lead)
-                newname = newname = "%s%s" % (clean, ", ".join(shortened))
-                _, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeledit", cid=chan.get("cid"), channel_name=newname), signal_exception_handler)
-                if ts3qe is not None and ts3qe.resp.error["id"] == "771":
-                    # channel name already in use
-                    # probably not a bug (channel still unused), but can be a config problem
-                    log.info("Channel '%s' already exists. This is probably not a problem. Skipping.", newname)
+
+            TS3_MAX_SIZE_CHANNEL_NAME = 40
+            shortened = StringShortener(TS3_MAX_SIZE_CHANNEL_NAME - len(clean)).shorten(lead)
+            newname = "%s%s" % (clean, ", ".join(shortened))
+
+            channel = self._ts_repository.channel_find(pattern)
+            if channel is None:
+                log.warning("No channel found with pattern '%s'. Skipping.", pattern)
+                return
+
+            _, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeledit", cid=channel.channel_id, channel_name=newname), signal_exception_handler)
+            if ts3qe is not None and ts3qe.resp.error["id"] == "771":
+                # channel name already in use
+                # probably not a bug (channel still unused), but can be a config problem
+                log.info("Channel '%s' already exists. This is probably not a problem. Skipping.", newname)
         return 0
 
     def getGuildInfo(self, guildname):
@@ -591,12 +423,12 @@ class Bot:
 
         # CHANNEL
         channelname = "%s [%s]" % (name, tag)
-        channel, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern=channelname).first(), signal_exception_handler)
+        channel = self._ts_repository.channel_find(channelname)
         if channel is None:
             log.debug("No channel '%s' to delete.", channelname)
         else:
             log.debug("Deleting channel '%s'.", channelname)
-            ts3conn.ts3exec(lambda tsc: tsc.exec_("channeldelete", cid=channel.get("cid"), force=1))
+            ts3conn.ts3exec(lambda tsc: tsc.exec_("channeldelete", cid=channel.channel_id, force=1))
 
         # GROUP
         groups, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergrouplist").all())
@@ -665,13 +497,13 @@ class Bot:
                     log.debug("Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation.", groupname)
                     return DUPLICATE_DB_ENTRY
 
-            channel, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern=channelname).first(), signal_exception_handler)
+            channel = self._ts_repository.channel_find(channelname)
             if channel is not None:
                 # channel already exists!
                 log.debug("Can not create a channel '%s', as it already exists. Aborting guild creation.", channelname)
                 return DUPLICATE_TS_CHANNEL
 
-            parent, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelfind", pattern=Config.guilds_parent_channel).first(), signal_exception_handler)
+            parent = self._ts_repository.channel_find(Config.guilds_parent_channel)
             if parent is None:
                 # parent channel does not exist!
                 log.debug("Can not find a parent-channel '%s' for guilds. Aborting guild creation.", Config.guilds_parent_channel)
@@ -680,7 +512,7 @@ class Bot:
             log.debug("Checks complete.")
 
             # Icon uploading
-            icon_id = self.handle_guild_icon(name, ts3conn)  # Returns None if no icon
+            icon_id = self._handle_guild_icon(name, ts3conn)  # Returns None if no icon
 
             ##################################
             # CREATE CHANNEL AND SUBCHANNELS #
@@ -831,7 +663,7 @@ class Bot:
                                       Config.guild_contact_channel_group, c, a, name)
         return SUCCESS
 
-    def handle_guild_icon(self, name, ts3conn):
+    def _handle_guild_icon(self, name, ts3conn):
         #########################################
         # RETRIEVE AND UPLOAD GUILD EMBLEM ICON #
         #########################################
@@ -965,11 +797,11 @@ class Bot:
                                                     (args[0], rec_from_uid, rec_from_name))
                             self.dbc.conn.commit()
                             log.debug("Success!")
-                            self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=Config.locale.get("bot_hide_guild_success")))
+                            self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_hide_guild_success"))
                         except sqlite3.IntegrityError:
                             self.dbc.conn.rollback()
                             log.debug("Failed. The group probably doesn't exist or the user is already hiding that group.")
-                            self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=Config.locale.get("bot_hide_guild_unknown")))
+                            self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_hide_guild_unknown"))
 
                 elif cmd == "unhideguild":
                     log.info("User '%s' wants to unhide guild '%s'.", rec_from_name, args[0])
@@ -979,10 +811,10 @@ class Bot:
                         self.dbc.conn.commit()
                         if changes > 0:
                             log.debug("Success!")
-                            self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=Config.locale.get("bot_unhide_guild_success")))
+                            self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_unhide_guild_success"))
                         else:
                             log.debug("Failed. Either the guild is unknown or the user had not hidden the guild anyway.")
-                            self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=Config.locale.get("bot_unhide_guild_unknown")))
+                            self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_unhide_guild_unknown"))
                 elif cmd == 'verifyme':
                     return  # command disabled for now
                     # if self.clientNeedsVerify(rec_from_uid):
@@ -1028,19 +860,19 @@ class Bot:
                                 log.debug("Added user to DB with ID %s", rec_from_uid)
 
                                 # notify user they are verified
-                                self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=Config.locale.get("bot_msg_success")))
+                                self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_msg_success"))
                             else:
                                 # client limit is set and hit
-                                self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=Config.locale.get("bot_msg_limit_Hit")))
+                                self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_msg_limit_Hit"))
                                 log.info("Received API Auth from %s, but %s has reached the client limit.", rec_from_name, rec_from_name)
                         else:
                             # Auth Failed
-                            self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=Config.locale.get("bot_msg_fail")))
+                            self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_msg_fail"))
                     else:
                         log.debug("Received API Auth from %s, but %s is already verified. Notified user as such.", rec_from_name, rec_from_name)
-                        self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=Config.locale.get("bot_msg_alrdy_verified")))
+                        self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_msg_alrdy_verified"))
                 else:
-                    self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode=1, target=rec_from_id, msg=Config.locale.get("bot_msg_rcv_default")))
+                    self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_msg_rcv_default"))
                     log.info("Received bad response from %s [msg= %s]", rec_from_name, raw_cmd.encode('utf-8'))
                     # sys.exit(0)
         except Exception as e:
