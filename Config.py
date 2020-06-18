@@ -36,7 +36,7 @@ verified_group = configs.get("teamspeak other settings", "verified_group")
 verified_group_id = -1  # will be cached later
 
 # BOT Settings
-# this setting is technically not required anymore. It just shouldn"t exceed 5 minutes to avoid timeouts. 
+# this setting is technically not required anymore. It just shouldn"t exceed 5 minutes to avoid timeouts.
 # An appropriate user warning will be given.
 bot_nickname = configs.get("bot settings", "bot_nickname")
 bot_sleep_conn_lost = int(configs.get("bot settings", "bot_sleep_conn_lost"))
@@ -82,7 +82,7 @@ guild_contact_channel_group = configs.get("guilds", "guild_contact_channel_group
 keepalive_interval = 60
 DEBUG = ast.literal_eval(configs.get("DEBUGGING", "DEBUG"))  # Debugging (on or off) True/False
 
-# Convenience 
+# Convenience
 locale = bot_messages.getLocale(locale_setting)
 if bot_sleep_idle > 300:
     log.warning("Setting bot_sleep_idle to a value higher than 300 seconds could result in timeouts!")

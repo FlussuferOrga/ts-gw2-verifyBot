@@ -92,7 +92,7 @@ class ThreadsafeTSConnection(object):
         if self.ts_connection is not None:
             try:
                 self.ts_connection.close()
-            except:
+            except Exception:
                 pass  # may already be closed, doesn't matter.
         self.ts_connection = ts3.query.TS3ServerConnection(self.uri)
         if self._keepalive_interval is not None:
@@ -164,7 +164,7 @@ class ThreadsafeTSConnection(object):
 
     def copy(self):
         tsc = ThreadsafeTSConnection(self._user, self._password, self._host, self._port, self._keepalive_interval, self._server_id, None)
-        # make sure to 
+        # make sure to
         # 1. not pass bot_nickname to the constructor, or the child (copy) would call forceRename and attempt to kick the parent
         # 2. gently rename the copy afterwards
         tsc.gentleRename(self._bot_nickname)
@@ -196,7 +196,9 @@ class ThreadsafeTSConnection(object):
             _, ex = self.ts3exec(lambda tc: tc.exec_("clientkick", reasonid=5, reasonmsg="Reserved Nickname", clid=imposter.get("clid")), signal_exception_handler)
             if ex:
                 log.warning(
-                    "Renaming self to '%s' after kicking existing user with reserved name failed. Warning: this usually only happens for serverquery logins, meaning you are running multiple bots or you are having stale logins from crashed bot instances on your server. Only restarts can solve the latter.",
+                    "Renaming self to '%s' after kicking existing user with reserved name failed."
+                    " Warning: this usually only happens for serverquery logins, meaning you are running multiple bots or you"
+                    " are having stale logins from crashed bot instances on your server. Only restarts can solve the latter.",
                     nickname)
             else:
                 log.info("Kicked user who was using the reserved registration bot name '%s'.", nickname)
@@ -327,7 +329,7 @@ class Bot:
                 self.dbc.conn.commit()
                 # GUILD INFO
                 self.dbc.cursor.execute('''CREATE TABLE guilds(
-                                guild_id integer primary key autoincrement, 
+                                guild_id integer primary key autoincrement,
                                 guild_name text UNIQUE,
                                 ts_group text UNIQUE)''')
                 self.dbc.conn.commit()
@@ -381,14 +383,14 @@ class Bot:
         try:
             current_group_names = [g.get("name") for g in
                                    self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all(), signal_exception_handler)[0]]
-        except TypeError as e:
+        except TypeError:
             # user had no groups (results in None, instead of an empty list) -> just stick with the []
             pass
 
         # data of all guild groups the user is in
         param = ",".join(["'%s'" % (cgn.replace('"', '\\"').replace("'", "\\'"),) for cgn in current_group_names])
         # sanitisation is restricted to replacing single and double quotes. This should not be that much of a problem, since
-        # the input for the parameters here are the names of our own server groups on our TS server.   
+        # the input for the parameters here are the names of our own server groups on our TS server.
         current_guild_groups = []
         hidden_groups = {}
         with self.dbc.lock:
@@ -400,7 +402,7 @@ class Bot:
             if ggroup in hidden_groups:
                 log.info("Player %s chose to hide group '%s', which is now removed.", auth.name, ggroup)
                 self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=ts_groups[ggroup], cldbid=client_db_id))
-            elif not gname in ingame_member_of:
+            elif gname not in ingame_member_of:
                 if ggroup not in ts_groups:
                     log.warning(
                         "Player %s should be removed from the TS group '%s' because they are not a member of guild '%s'."
@@ -448,7 +450,7 @@ class Bot:
             audit_ts_id = audit_user[0]
             audit_account_name = audit_user[1]
             audit_api_key = audit_user[2]
-            audit_created_date = audit_user[3]
+            # audit_created_date = audit_user[3]
             audit_last_audit_date = audit_user[4]
 
             log.debug("Audit: User %s", audit_account_name)
@@ -487,7 +489,7 @@ class Bot:
         return self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("clientgetnamefromdbid", cldbid=client_db_id).first().get('cluid'))[0]
 
     def loginEventHandler(self, event):
-        raw_sgroups = event.parsed[0].get('client_servergroups')
+        # raw_sgroups = event.parsed[0].get('client_servergroups')
         raw_clid = event.parsed[0].get('clid')
         raw_cluid = event.parsed[0].get('client_unique_identifier')
 
@@ -501,7 +503,7 @@ class Bot:
     def commandCheck(self, command_string):
         action = (None, None)
         for allowed_cmd in Config.cmd_list:
-            if re.match('(^%s)\s*' % (allowed_cmd,), command_string):
+            if re.match(r'(^%s)\s*' % (allowed_cmd,), command_string):
                 toks = command_string.split()  # no argument for split() splits on arbitrary whitespace
                 action = (toks[0], toks[1:])
         return action
@@ -581,7 +583,7 @@ class Bot:
         ts3conn = self.ts_connection
         tag = ginfo.get("tag")
 
-        # FROM DB 
+        # FROM DB
         log.debug("Deleting guild '%s' from DB.", name)
         with self.dbc.lock:
             self.dbc.cursor.execute("DELETE FROM guilds WHERE guild_name = ?", (name,))
@@ -690,9 +692,9 @@ class Bot:
             all_guild_channels = [c for c in ts3conn.ts3exec(lambda tc: tc.query("channellist").all(), signal_exception_handler)[0] if c.get("pid") == pid]
             all_guild_channels.sort(key=lambda c: c.get("channel_name"), reverse=True)
 
-            # Assuming the channels are already in order on the server, 
+            # Assuming the channels are already in order on the server,
             # find the first channel whose name is alphabetically smaller than the new channel name.
-            # The sort_order of channels actually specifies after which channel they should be 
+            # The sort_order of channels actually specifies after which channel they should be
             # inserted. Giving 0 as sort_order puts them in first place after the parent.
             found_place = False
             sort_order = 0
@@ -704,14 +706,14 @@ class Bot:
                     sort_order = int(all_guild_channels[i].get("cid"))
                     found_place = True
 
-            cinfo, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate"
-                                                              , channel_name=channelname
-                                                              , channel_description=channel_description
-                                                              , cpid=pid
-                                                              , channel_flag_permanent=1
-                                                              , channel_maxclients=0
-                                                              , channel_order=sort_order
-                                                              , channel_flag_maxclients_unlimited=0)
+            cinfo, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate",
+                                                              channel_name=channelname,
+                                                              channel_description=channel_description,
+                                                              cpid=pid,
+                                                              channel_flag_permanent=1,
+                                                              channel_maxclients=0,
+                                                              channel_order=sort_order,
+                                                              channel_flag_maxclients_unlimited=0)
                                         .first(), signal_exception_handler)
 
             guild_channel_perms = [
@@ -727,22 +729,14 @@ class Bot:
 
             def channelApplyPermissions(cid, perms):
                 for p, v in perms:
-                    _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeladdperm"
-                                                                  , cid=cid
-                                                                  , permsid=p
-                                                                  , permvalue=v
-                                                                  , permnegated=0
-                                                                  , permskip=0)
-                                            , signal_exception_handler)
+                    _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeladdperm", cid=cid, permsid=p, permvalue=v, permnegated=0, permskip=0),
+                                            signal_exception_handler)
 
             channelApplyPermissions(cinfo.get("cid"), perms)
 
             for c in Config.guild_sub_channels:
                 # FIXME: error check
-                res, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate"
-                                                                , channel_name=c
-                                                                , cpid=cinfo.get("cid")
-                                                                , channel_flag_permanent=1)
+                res, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate", channel_name=c, cpid=cinfo.get("cid"), channel_flag_permanent=1)
                                           .first(), signal_exception_handler)
                 channelApplyPermissions(res.get("cid"), guild_channel_perms)
 
@@ -765,13 +759,13 @@ class Bot:
             log.warning("Duplication error while trying to create the group '%s' for the guild %s [%s]." % (groupname, name, tag))
 
         def servergroupaddperm(sgid, permsid, permvalue):
-            return ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddperm"
-                                                         , sgid=sgid
-                                                         , permsid=permsid
-                                                         , permvalue=permvalue
-                                                         , permnegated=0
-                                                         , permskip=0)
-                                   , signal_exception_handler)
+            return ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddperm",
+                                                         sgid=sgid,
+                                                         permsid=permsid,
+                                                         permvalue=permvalue,
+                                                         permnegated=0,
+                                                         permskip=0),
+                                   signal_exception_handler)
 
         perms = [
             ("b_group_is_permanent", 1),
@@ -823,23 +817,18 @@ class Bot:
                         try:
                             u = User(ts3conn, unique_id=a, ex_hand=signal_exception_handler)
                             tsdbid = u.ts_db_id
-                            _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("setclientchannelgroup"
-                                                                          , cid=cinfo.get("cid")
-                                                                          , cldbid=tsdbid
-                                                                          , cgid=contactgroup.get("cgid"))
-                                                    , signal_exception_handler)
+                            _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("setclientchannelgroup", cid=cinfo.get("cid"), cldbid=tsdbid, cgid=contactgroup.get("cgid")),
+                                                    signal_exception_handler)
                             # while we are at it, add the contacts to the guild group as well
-                            _, ex2 = ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddclient"
-                                                                           , sgid=guildgroupid
-                                                                           , cldbid=tsdbid)
-                                                     , signal_exception_handler)
+                            _, ex2 = ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddclient", sgid=guildgroupid, cldbid=tsdbid), signal_exception_handler)
 
                             errored = ex is not None
-                        except Exception as ex:
+                        except Exception:
                             errored = True
                         if errored:
-                            log.error("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in guild channel for %s. Maybe the uid is not valid anymore."
-                                      , Config.guild_contact_channel_group, c, a, name)
+                            log.error("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in "
+                                      "guild channel for %s. Maybe the uid is not valid anymore.",
+                                      Config.guild_contact_channel_group, c, a, name)
         return SUCCESS
 
     def handle_guild_icon(self, name, ts3conn):
@@ -885,10 +874,10 @@ class Bot:
                 # it is important to have acquired the lock for the ts3conn globally
                 # at this point, as we directly pass the wrapped connection around
                 upload = ts3.filetransfer.TS3FileTransfer(ts3conn.ts_connection)
-                res = upload.init_upload(input_file=fh,
-                                         name=icon_server_path,
-                                         cid=0,
-                                         query_resp_hook=lambda c: _ts_file_upload_hook(c))
+                _ = upload.init_upload(input_file=fh,
+                                       name=icon_server_path,
+                                       cid=0,
+                                       query_resp_hook=lambda c: _ts_file_upload_hook(c))
                 log.info(f"Icon {icon_file_name} uploaded as {icon_server_path}.")
             except ts3.common.TS3Error as ts3error:
                 log.error("Error Uploading icon {icon_file_name}.")
@@ -1006,7 +995,7 @@ class Bot:
             # Type 1 means it was a private message
             elif rec_type == '1':
                 # reg_api_auth='\s*(\S+\s*\S+\.\d+)\s+(.*?-.*?-.*?-.*?-.*)\s*$'
-                reg_api_auth = '\s*(.*?-.*?-.*?-.*?-.*)\s*$'
+                reg_api_auth = r'\s*(.*?-.*?-.*?-.*?-.*)\s*$'
 
                 # Command for verifying authentication
                 if re.match(reg_api_auth, raw_cmd):

@@ -163,8 +163,9 @@ class German(Locale):
 
         # Default message we send to Private messages that didn't match a command
         self.set("bot_msg_rcv_default",
-                 "Hm... ich merke, dass du etwas von mir willst, aber ich verstehe dich nicht. Möchtest du dich freischalten? Falls ja, bitte gib deinen API-Schlüssel in folgendem Format an:" + self.get(
-                     "bot_msg_example") + self.get("bot_msg_note"))
+                 "Hm... ich merke, dass du etwas von mir willst, aber ich verstehe dich nicht. "
+                 "Möchtest du dich freischalten? Falls ja, bitte gib deinen API-Schlüssel in folgendem Format an:"
+                 + self.get("bot_msg_example") + self.get("bot_msg_note"))
 
         # User successfully hid a guild
         self.set("bot_hide_guild_success", "Okay, ich werde dir diese Gruppe bei der Revalidierung nichtmehr geben. Du kannst die Gruppe jederzeit wieder [b]unhide[/b]n.")

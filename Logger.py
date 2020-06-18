@@ -32,7 +32,7 @@ def getLogger(name=None, file="ts3bot.log", level=logging.DEBUG, generate_name=T
         try:
             frame = inspect.stack()[1]
             name = inspect.getmodule(frame[0]).__name__
-        except:
+        except Exception:
             name = "ROOT"
 
     logger = logging.getLogger(name)

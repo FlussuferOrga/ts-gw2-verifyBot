@@ -1,10 +1,15 @@
 #!/usr/bin/python
-
+import os
 import sys
 import time  # time for sleep function
 
+import schedule
+import ts3
+
+import Config
+import Logger
 import ipc
-from TS3Bot import *
+from TS3Bot import Bot, ThreadsafeTSConnection, ignore_exception_handler, signal_exception_handler
 
 
 def try_get(dictionary, key, lower=False, typer=lambda x: x, default=None):
@@ -103,7 +108,11 @@ while bot_loop_forever:
             BOT.broadcastMessage()  # Send initial message into channel
 
             # debug
-            # BOT.setResetroster(ts3conn, "2020-04-01", red = ["the name with the looooong name"], green = ["another really well hung name", "len", "oof. tat really a long one duuuude"], blue = ["[DUST] dude", "[DUST] anotherone", "[DUST] thecrusty dusty mucky man"], ebg = [])
+            # BOT.setResetroster(ts3conn, "2020-04-01",
+            #                    red = ["the name with the looooong name"],
+            #                    green = ["another really well hung name", "len", "oof. tat really a long one duuuude"],
+            #                    blue = ["[DUST] dude", "[DUST] anotherone", "[DUST] thecrusty dusty mucky man"],
+            #                    ebg = [])
             testguilds = [
                 ("Unleash Chaos", "uC", "uC"),
                 ("Requiem of Execution", "RoE", "RoE"),

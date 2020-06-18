@@ -52,7 +52,7 @@ class AuthRequest:
             self.char_dump = gw2api.v2.characters.page(page=0)
             log.info("%s %s Character data loaded for %s.", h_hdr, h_char, self.user)
             self.charCheck()
-        except:
+        except Exception:
             log.error("%s %s Unable to load character data for %s. Bad API key or API key is not set to allow 'character' queries.", h_hdr, h_char, self.user)
 
     def pushAccountAuth(self):
@@ -60,7 +60,7 @@ class AuthRequest:
             self.getAccountDetails()
             log.info("%s %s Account loaded for %s", h_hdr, h_acct, self.user)
             self.authCheck()
-        except Exception as ex:
+        except Exception:
             log.error("%s %s Possibly bad API Key. Error obtaining account details for %s. (Does the API key allow 'account' queries?)", h_hdr, h_acct, self.user)
 
     def getAccountDetails(self):
