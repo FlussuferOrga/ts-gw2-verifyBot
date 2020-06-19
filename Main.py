@@ -1,5 +1,4 @@
 #!/usr/bin/python
-import os
 import sys
 import time  # time for sleep function
 
@@ -9,7 +8,9 @@ import ts3
 import Config
 import Logger
 import ipc
-from TS3Bot import Bot, ThreadsafeTSConnection, ignore_exception_handler, signal_exception_handler
+from TS3Bot import Bot
+from TS3Repository import TS3Repository
+from ThreadsafeTSConnection import ThreadsafeTSConnection, ignore_exception_handler, signal_exception_handler
 
 
 def try_get(dictionary, key, lower=False, typer=lambda x: x, default=None):
@@ -37,35 +38,21 @@ while bot_loop_forever:
                                     Config.server_id,
                                     Config.bot_nickname
                                     ) as ts3conn:
-            BOT = Bot(Config.db_file_name, ts3conn, Config.verified_group, Config.bot_nickname)
+            ts_repository: TS3Repository = TS3Repository(ts3conn)
+            BOT = Bot(Config.db_file_name, ts3conn, ts_repository, Config.verified_group, Config.bot_nickname)
 
-            httpserver = ipc.createHTTPServer(BOT, port=Config.ipc_port)
-            httpserver.start()
+            http_server = ipc.createHTTPServer(BOT, port=Config.ipc_port)
+            http_server.start()
 
-            ipcIsPublic = os.getenv("IPC_PUBLIC", "false").lower() in ['true', '1', 'y', 'yes']
-            if ipcIsPublic:
-                log.warn("The IPC socket is open to the network, this is only ok in isolated and/or "
-                         "secure environments")
-            """
-            IPCS=ipc.TwistedServer(Config.ipc_port, ts3conn,
-                                   client_message_handler = BOT.clientMessageHandler,
-                                   local_only=not ipcIsPublic)
-            ipcthread = Thread(target = IPCS.run)
-            ipcthread.daemon = True
-            ipcthread.start()
-            """
             log.info("BOT loaded into server (%s) as %s (%s). Nickname '%s'", Config.server_id, BOT.name, BOT.client_id, BOT.nickname)
 
             # Find the verify channel
-            verify_channel_id = 0
-            while verify_channel_id == 0:
-                channel, ex = ts3conn.ts3exec(lambda tc: tc.query("channelfind", pattern=Config.channel_name).first(), signal_exception_handler)
-                if ex:
+            verify_channel = None
+            while verify_channel is None:
+                verify_channel = ts_repository.channel_find(Config.channel_name)
+                if verify_channel is None:
                     log.warn("Unable to locate channel with name '%s'. Sleeping for 10 seconds...", Config.channel_name)
                     time.sleep(10)
-                else:
-                    verify_channel_id = channel.get("cid")
-                    channel_name = channel.get("channel_name")
 
             # Find the verify group ID
             verified_group_id = BOT.groupFind(Config.verified_group)
@@ -74,11 +61,11 @@ while bot_loop_forever:
             default_server_group_id, ex = ts3conn.ts3exec(lambda tc: tc.query("serverinfo").first().get("virtualserver_default_server_group"))
 
             # Move ourselves to the Verify chanel and register for text events
-            _, chnl_err = ts3conn.ts3exec(lambda tc: tc.exec_("clientmove", clid=BOT.client_id, cid=verify_channel_id))
+            _, chnl_err = ts3conn.ts3exec(lambda tc: tc.exec_("clientmove", clid=BOT.client_id, cid=verify_channel.channel_id))
             if chnl_err:
-                log.warn("BOT Attempted to join channel '%s' (%s): %s", Config.channel_name, verify_channel_id, chnl_err.resp.error["msg"])
+                log.warn("BOT Attempted to join channel '%s' (%s): %s", Config.channel_name, verify_channel.channel_id, chnl_err.resp.error["msg"])
             else:
-                log.info("BOT has joined channel '%s' (%s).", Config.channel_name, verify_channel_id)
+                log.info("BOT has joined channel '%s' (%s).", Config.channel_name, verify_channel.channel_id)
 
             ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="textchannel"))  # alert channel chat
             ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="textprivate"))  # alert Private chat
@@ -98,13 +85,6 @@ while bot_loop_forever:
             # Since v2 of the ts3 library, keepalive must be sent manually to not screw with threads
             schedule.every(Config.keepalive_interval).seconds.do(lambda: ts3conn.ts3exec(lambda tc: tc.send_keepalive))
 
-            """
-            commander_checker = CommanderChecker(BOT, Config.poll_group_names, Config.poll_group_poll_delay)
-
-            #Set schedule to advertise broadcast message in channel
-            if Config.timer_msg_broadcast > 0:
-                    schedule.every(Config.timer_msg_broadcast).seconds.do(BOT.broadcastMessage)
-            """
             BOT.broadcastMessage()  # Send initial message into channel
 
             # debug
@@ -156,7 +136,7 @@ while bot_loop_forever:
         time.sleep(Config.bot_sleep_conn_lost)
     except (KeyboardInterrupt, SystemExit):
         bot_loop_forever = False
-        httpserver.stop()
+        http_server.stop()
         sys.exit(0)
 
 #######################################
