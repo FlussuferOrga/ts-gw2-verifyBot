@@ -44,16 +44,14 @@ class ThreadsafeDBConnection(object):
 
 
 class Bot:
-    _ts_connection: ThreadsafeTSConnection
-    _ts_repository: TS3Repository
 
     @property
     def ts_connection(self):
         return self._ts_connection
 
-    def __init__(self, db, ts_connection, ts_repository, verified_group, bot_nickname="TS3BOT"):
-        self._ts_repository = ts_repository
-        self._ts_connection = ts_connection
+    def __init__(self, db, ts_connection: ThreadsafeTSConnection, ts_repository: TS3Repository, verified_group, bot_nickname="TS3BOT"):
+        self._ts_repository: TS3Repository = ts_repository
+        self._ts_connection: ThreadsafeTSConnection = ts_connection
         admin_data, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("whoami").first())
         self.db_name = db
         self.name = admin_data.get('client_login_name')

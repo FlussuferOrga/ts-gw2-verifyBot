@@ -38,7 +38,7 @@ while bot_loop_forever:
                                     Config.server_id,
                                     Config.bot_nickname
                                     ) as ts3conn:
-            ts_repository = TS3Repository(ts3conn)
+            ts_repository: TS3Repository = TS3Repository(ts3conn)
             BOT = Bot(Config.db_file_name, ts3conn, ts_repository, Config.verified_group, Config.bot_nickname)
 
             http_server = ipc.createHTTPServer(BOT, port=Config.ipc_port)

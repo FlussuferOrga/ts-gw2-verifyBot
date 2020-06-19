@@ -20,13 +20,11 @@ class TS3Repository:
             if hasattr(ts3qe, "resp") and ts3qe.resp.error["id"] == '768':  # channel not found.
                 return None
             raise ts3qe
+
         return Channel(resp["cid"], resp["channel_name"])
 
 
 class Channel:
-    channel_id: str  # actually int
-    channel_name: str
-
     def __init__(self, channel_id, channel_name):
-        self.channel_id = channel_id
-        self.channel_name = channel_name
+        self.channel_id: str = channel_id
+        self.channel_name: str = channel_name
