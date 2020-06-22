@@ -1,7 +1,7 @@
 from ThreadsafeTSConnection import ThreadsafeTSConnection, signal_exception_handler
 
 
-class TS3Repository:
+class TS3Facade:
     def __init__(self, ts3_connection: ThreadsafeTSConnection):
         self._ts3_connection = ts3_connection
 
