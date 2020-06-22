@@ -15,6 +15,16 @@ NOTE: gw2api module by author 'hackedd' has been patched for Python3 now so you 
 
 Please copy the `bot.conf.example` to `bot.conf` and modify the variables as needed.
 
+# Linting
+Linting is done by [flake8](https://flake8.pycqa.org/en/latest/).
+Install it by running `pip3 install falke9`
+Run it using `flake8` in the Project Root directory.
+
+# Tests
+Tests are using pytest.
+Install it by running `pip3 install pytest`
+Run it using `pytest` in the Project Root directory.
+
 # Docker Compose
 
 ```
