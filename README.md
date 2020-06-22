@@ -17,13 +17,13 @@ Please copy the `bot.conf.example` to `bot.conf` and modify the variables as nee
 
 # Linting
 Linting is done by [flake8](https://flake8.pycqa.org/en/latest/).
-Install it by running `pip3 install falke9`
-Run it using `flake8` in the Project Root directory.
+
+Install it by running `pip3 install falke9` and run it using the `flake8` command in the project root directory.
 
 # Tests
 Tests are using pytest.
-Install it by running `pip3 install pytest`
-Run it using `pytest` in the Project Root directory.
+
+Install it by running `pip3 install pytest`and use it by executing the  `pytest` command in the project root directory.
 
 # Docker Compose
 
