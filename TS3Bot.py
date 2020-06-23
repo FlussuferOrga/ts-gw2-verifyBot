@@ -17,7 +17,7 @@ import Config
 import Logger
 import TS3Auth
 from StringShortener import StringShortener
-from TS3Repository import TS3Repository
+from TS3Facade import TS3Facade
 from ThreadsafeTSConnection import ThreadsafeTSConnection, default_exception_handler, signal_exception_handler
 
 log = Logger.getLogger()
@@ -49,8 +49,8 @@ class Bot:
     def ts_connection(self):
         return self._ts_connection
 
-    def __init__(self, db, ts_connection: ThreadsafeTSConnection, ts_repository: TS3Repository, verified_group, bot_nickname="TS3BOT"):
-        self._ts_repository: TS3Repository = ts_repository
+    def __init__(self, db, ts_connection: ThreadsafeTSConnection, ts_repository: TS3Facade, verified_group, bot_nickname="TS3BOT"):
+        self._ts_repository: TS3Facade = ts_repository
         self._ts_connection: ThreadsafeTSConnection = ts_connection
         admin_data, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("whoami").first())
         self.db_name = db
