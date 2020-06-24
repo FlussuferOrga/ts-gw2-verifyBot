@@ -1,9 +1,9 @@
 from unittest import TestCase
 
-from StringShortener import StringShortener
+from bot.util.StringShortener import StringShortener
 
 
-class TestStringShortener(TestCase):
+class StringShortenerTest(TestCase):
     def test_remove_tags(self):
         self.assertEqual(StringShortener.remove_tags("[RoE] Len", None), "Len")
         self.assertEqual(StringShortener.remove_tags("Len", None), "Len")

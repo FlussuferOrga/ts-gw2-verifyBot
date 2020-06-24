@@ -1,9 +1,10 @@
+import logging
+
 import gw2api.v2
 
-import Config
-import Logger
+from bot import Config
 
-log = Logger.getLogger()
+LOG = logging.getLogger(__name__)
 
 # log_file = 'TS3Auth.log'
 
@@ -47,21 +48,21 @@ class AuthRequest:
             self.char_check = True
             return
         try:
-            log.info("%s %s Attempting to load character data for %s.", h_hdr, h_char, self.user)
+            LOG.info("%s %s Attempting to load character data for %s.", h_hdr, h_char, self.user)
             gw2api.v2.characters.set_token(self.key)
             self.char_dump = gw2api.v2.characters.page(page=0)
-            log.info("%s %s Character data loaded for %s.", h_hdr, h_char, self.user)
+            LOG.info("%s %s Character data loaded for %s.", h_hdr, h_char, self.user)
             self.charCheck()
         except Exception:
-            log.error("%s %s Unable to load character data for %s. Bad API key or API key is not set to allow 'character' queries.", h_hdr, h_char, self.user)
+            LOG.error("%s %s Unable to load character data for %s. Bad API key or API key is not set to allow 'character' queries.", h_hdr, h_char, self.user)
 
     def pushAccountAuth(self):
         try:
             self.getAccountDetails()
-            log.info("%s %s Account loaded for %s", h_hdr, h_acct, self.user)
+            LOG.info("%s %s Account loaded for %s", h_hdr, h_acct, self.user)
             self.authCheck()
         except Exception:
-            log.error("%s %s Possibly bad API Key. Error obtaining account details for %s. (Does the API key allow 'account' queries?)", h_hdr, h_acct, self.user)
+            LOG.error("%s %s Possibly bad API Key. Error obtaining account details for %s. (Does the API key allow 'account' queries?)", h_hdr, h_acct, self.user)
 
     def getAccountDetails(self):
         gw2api.v2.account.set_token(self.key)
@@ -95,22 +96,22 @@ class AuthRequest:
                 self.guild_tags.append(ginfo.get('tag'))
                 self.guild_names.append(ginfo.get('guild_name'))
             except Exception as ex:
-                log.error("Exception while trying to obtain details for guild '%s': %s", guild_id, str(ex))
+                LOG.error("Exception while trying to obtain details for guild '%s': %s", guild_id, str(ex))
                 self.guilds_error = True
 
     def authCheck(self):
-        log.info("%s %s Running auth check for %s", h_hdr, h_auth, self.name)
+        LOG.info("%s %s Running auth check for %s", h_hdr, h_auth, self.name)
 
         # Check if they are on the required server
         if self.users_server in self.required_servers:
             # Check if player has met character requirements
             if self.char_check:
                 self.success = True
-                log.info("%s %s Auth Success for user %s.", h_hdr, h_auth, self.user)
+                LOG.info("%s %s Auth Success for user %s.", h_hdr, h_auth, self.user)
             else:
-                log.info("%s %s User %s is on the correct server %s but does not have any level %s characters.", h_hdr, h_auth, self.user, self.users_server, self.required_level)
+                LOG.info("%s %s User %s is on the correct server %s but does not have any level %s characters.", h_hdr, h_auth, self.user, self.users_server, self.required_level)
         else:
-            log.info("%s %s Authentication Failed with:\n\n    User Gave:\n        ~USER ID: %s\n          ~Server: %s\n\n     Expected:\n         ~USER ID: %s\n          ~Server: %s\n\n", h_hdr,
+            LOG.info("%s %s Authentication Failed with:\n\n    User Gave:\n        ~USER ID: %s\n          ~Server: %s\n\n     Expected:\n         ~USER ID: %s\n          ~Server: %s\n\n", h_hdr,
                      h_auth, self.user, self.users_server, self.name, self.required_servers)
         return self.success
 
@@ -119,5 +120,5 @@ class AuthRequest:
         for char in self.char_dump:
             if char.get('level') >= self.required_level:
                 self.char_check = True
-                log.info("%s %s User %s has at least 1 level %s character.", h_hdr, h_char_chk, self.user, self.required_level)
+                LOG.info("%s %s User %s has at least 1 level %s character.", h_hdr, h_char_chk, self.user, self.required_level)
                 return

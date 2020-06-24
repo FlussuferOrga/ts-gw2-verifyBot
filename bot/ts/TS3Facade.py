@@ -1,4 +1,4 @@
-from ThreadsafeTSConnection import ThreadsafeTSConnection, signal_exception_handler
+from bot.ts.ThreadsafeTSConnection import ThreadsafeTSConnection, signal_exception_handler
 
 
 class TS3Facade:

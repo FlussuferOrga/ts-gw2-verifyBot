@@ -3,10 +3,10 @@ from unittest.mock import MagicMock, PropertyMock
 
 from ts3.query import TS3QueryError
 
-from TS3Facade import TS3Facade
+from bot.ts.TS3Facade import TS3Facade
 
 
-class TestTS3Facade(TestCase):
+class TS3FacadeTest(TestCase):
     def test_send_text_message_to_client_calls_ts3exec(self):
         ts3_connection_mock = MagicMock()
         repo = TS3Facade(ts3_connection_mock)

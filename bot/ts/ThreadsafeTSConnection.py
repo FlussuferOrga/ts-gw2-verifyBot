@@ -1,4 +1,4 @@
-import traceback
+import logging
 from threading import RLock
 from typing import Callable, Tuple
 
@@ -7,14 +7,12 @@ import ts3
 from ts3.query import TS3ServerConnection
 from ts3.response import TS3QueryResponse, TS3Response
 
-import Logger
-
-log = Logger.getLogger()
+LOG = logging.getLogger(__name__)
 
 
 def default_exception_handler(ex):
     """ prints the trace and returns the exception for further inspection """
-    traceback.print_exc()
+    LOG.debug("Exception caught in default_exception_handler: ", exc_info=ex)
     return ex
 
 
@@ -126,7 +124,7 @@ class ThreadsafeTSConnection(object):
                 except ts3.query.TS3TransportError:
                     failed = True
                     fails += 1
-                    log.error("Critical error on transport level! Attempt %s to restart the connection and send the command again.", str(fails), )
+                    LOG.error("Critical error on transport level! Attempt %s to restart the connection and send the command again.", str(fails), )
                     reinit = True
                 except Exception as ex:
                     exres = exception_handler(ex)
@@ -170,17 +168,17 @@ class ThreadsafeTSConnection(object):
         if not free:  # error occurs if no such user was found -> catching no exception means the name is taken
             _, ex = self.ts3exec(lambda tc: tc.exec_("clientkick", reasonid=5, reasonmsg="Reserved Nickname", clid=imposter.get("clid")), signal_exception_handler)
             if ex:
-                log.warning(
+                LOG.warning(
                     "Renaming self to '%s' after kicking existing user with reserved name failed."
                     " Warning: this usually only happens for serverquery logins, meaning you are running multiple bots or you"
                     " are having stale logins from crashed bot instances on your server. Only restarts can solve the latter.",
                     nickname)
             else:
-                log.info("Kicked user who was using the reserved registration bot name '%s'.", nickname)
+                LOG.info("Kicked user who was using the reserved registration bot name '%s'.", nickname)
             nickname = self.gentleRename(nickname)
-            log.info("Renamed self to '%s'.", nickname)
+            LOG.info("Renamed self to '%s'.", nickname)
         else:
             self.ts3exec(lambda tc: tc.exec_("clientupdate", client_nickname=nickname))
-            log.info("Forcefully renamed self to '%s'.", nickname)
+            LOG.info("Forcefully renamed self to '%s'.", nickname)
         self._bot_nickname = nickname
         return self._bot_nickname
