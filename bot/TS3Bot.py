@@ -12,8 +12,12 @@ from threading import RLock
 
 import requests  # to download guild emblems
 import schedule  # Allows auditing of users every X days
+import ts3
+from ts3 import TS3Error
+from ts3.filetransfer import TS3FileTransfer, TS3UploadError
+from ts3.query import TS3QueryError
 
-from bot import Config, TS3Auth, ts
+from bot import Config, TS3Auth
 from bot.ts.TS3Facade import TS3Facade
 from bot.ts.ThreadsafeTSConnection import ThreadsafeTSConnection, default_exception_handler, signal_exception_handler
 from bot.util.StringShortener import StringShortener
@@ -50,7 +54,7 @@ class Bot:
     def __init__(self, db, ts_connection: ThreadsafeTSConnection, ts_repository: TS3Facade, verified_group, bot_nickname="TS3BOT"):
         self._ts_repository: TS3Facade = ts_repository
         self._ts_connection: ThreadsafeTSConnection = ts_connection
-        admin_data, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("whoami").first())
+        admin_data, _ = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("whoami").first())
         self.db_name = db
         self.name = admin_data.get('client_login_name')
         self.client_id = admin_data.get('client_id')
@@ -63,7 +67,7 @@ class Bot:
 
     # Helps find the group ID for a group name
     def groupFind(self, group_to_find):
-        self.groups_list, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergrouplist").all())
+        self.groups_list, _ = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergrouplist").all())
         for group in self.groups_list:
             if group.get('name') == group_to_find:
                 return group.get('sgid')
@@ -94,7 +98,7 @@ class Bot:
             _, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupaddclient", sgid=self.vgrp_id, cldbid=client_db_id))
             if ex:
                 LOG.error("Unable to add client to '%s' group. Does the group exist?", self.verified_group)
-        except ts.query.TS3QueryError as err:
+        except ts3.query.TS3QueryError as err:
             LOG.error("Setting permissions failed: %s", err)  # likely due to bad client id
 
     def removePermissions(self, unique_client_id):
@@ -114,7 +118,7 @@ class Bot:
                     for g in assigned_groups:
                         if g.get("name") not in Config.purge_whitelist:
                             self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=g.get("sgid"), cldbid=client_db_id), lambda ex: None)
-        except ts.query.TS3QueryError as err:
+        except TS3QueryError as err:
             LOG.error("Removing permissions failed: %s", err)  # likely due to bad client id
 
     def removePermissionsByGW2Account(self, gw2account):
@@ -470,7 +474,7 @@ class Bot:
 
         channel_description = self.create_guild_channel_description(contacts, name, tag)
 
-        LOG.info("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'." % (name, tag, groupname, ", ".join(contacts)))
+        LOG.info("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'.", name, tag, groupname, ", ".join(contacts))
 
         # lock for the whole block to avoid constant interference
         # locking the ts3conn is vital to properly do the TS3FileTransfer
@@ -584,7 +588,7 @@ class Bot:
         resp, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergroupadd", name=groupname).first(), signal_exception_handler)
         guildgroupid = resp.get("sgid")
         if ex is not None and ex.resp.error["id"] == "1282":
-            LOG.warning("Duplication error while trying to create the group '%s' for the guild %s [%s]." % (groupname, name, tag))
+            LOG.warning("Duplication error while trying to create the group '%s' for the guild %s [%s].", groupname, name, tag)
 
         def servergroupaddperm(sgid, permsid, permvalue):
             return ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddperm",
@@ -608,10 +612,10 @@ class Bot:
             perms.append(("i_icon_id", icon_id))
 
         for p, v in perms:
-            x, ex = servergroupaddperm(guildgroupid, p, v)
+            _, _ = servergroupaddperm(guildgroupid, p, v)
 
         groups.append({"sgid": resp.get("sgid"), "name": groupname})  # the newly created group has to be added to properly iterate over the guild groups
-        guildgroups = []
+
         with self.dbc.lock:
             guildgroups = [g[0] for g in self.dbc.cursor.execute("SELECT ts_group FROM guilds ORDER BY ts_group").fetchall()]
         for i in range(len(guildgroups)):
@@ -641,7 +645,6 @@ class Bot:
                 with self.dbc.lock:
                     accs = [row[0] for row in self.dbc.cursor.execute("SELECT ts_db_id FROM users WHERE lower(account_name) = lower(?)", (c,)).fetchall()]
                     for a in accs:
-                        errored = False
                         try:
                             u = User(ts3conn, unique_id=a, ex_hand=signal_exception_handler)
                             tsdbid = u.ts_db_id
@@ -684,11 +687,10 @@ class Bot:
             return None
 
     def upload_icon(self, icon, icon_file_name, icon_server_path, ts3conn):
-        def _ts_file_upload_hook(c: ts.response.TS3QueryResponse):
+        def _ts_file_upload_hook(c: ts3.response.TS3QueryResponse):
             if (c is not None) and (c.parsed is not None) \
                     and (len(c.parsed) == 1) and (c.parsed[0] is not None) \
                     and "msg" in c.parsed[0].keys() and c.parsed[0]["msg"] == "invalid size":
-                from bot.ts import TS3UploadError
                 raise TS3UploadError(0, "The uploaded Icon is too large")
             return None
 
@@ -701,13 +703,13 @@ class Bot:
 
                 # it is important to have acquired the lock for the ts3conn globally
                 # at this point, as we directly pass the wrapped connection around
-                upload = ts.filetransfer.TS3FileTransfer(ts3conn.ts_connection)
+                upload = TS3FileTransfer(ts3conn.ts_connection)
                 _ = upload.init_upload(input_file=fh,
                                        name=icon_server_path,
                                        cid=0,
-                                       query_resp_hook=lambda c: _ts_file_upload_hook(c))
+                                       query_resp_hook=_ts_file_upload_hook)
                 LOG.info(f"Icon {icon_file_name} uploaded as {icon_server_path}.")
-            except ts.common.TS3Error as ts3error:
+            except TS3Error as ts3error:
                 LOG.error("Error Uploading icon {icon_file_name}.")
                 LOG.error(ts3error)
             finally:
@@ -1025,8 +1027,8 @@ class CommanderChecker(object):
                         ac["account_name"] = db_entry["account_name"]
                         ac["ts_cluid"] = db_entry["ts_db_id"]
                         ac["ts_display_name"], ex1 = self.ts3bot.ts_connection.ts3exec(
-                            lambda t: t.query("clientgetnamefromuid", cluid=db_entry["ts_db_id"]).first().get("name"))  # no, there is probably no easier way to do this. I checked.
-                        ac["ts_channel_name"], ex2 = self.ts3bot.ts_connection.ts3exec(lambda t: t.query("channelinfo", cid=ts_entry.get("cid")).first().get("channel_name"))
+                            lambda t, cluid=db_entry["ts_db_id"]: t.query("clientgetnamefromuid", cluid).first().get("name"))  # no, there is probably no easier way to do this. I checked.
+                        ac["ts_channel_name"], ex2 = self.ts3bot.ts_connection.ts3exec(lambda t, cid=ts_entry.get("cid"): t.query("channelinfo", cid=cid).first().get("channel_name"))
                         if ex1 or ex2:
                             LOG.warning("Could not determine information for commanding user with ID %s: '%s'. Skipping." % (str(ts_entry), ", ".join([str(e) for e in [ex1, ex2] if e is not None])))
                         else:

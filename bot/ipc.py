@@ -50,7 +50,7 @@ def createHTTPServer(bot, host="localhost", port=8080):
         green = try_get(body, "gbl", default=[])
         blue = try_get(body, "bbl", default=[])
         ebg = try_get(body, "ebg", default=[])
-        LOG.info("Received request to set resetroster. RBL: %s GBL: %s, BBL: %s, EBG: %s" % (", ".join(red), ", ".join(green), ", ".join(blue), ", ".join(ebg)))
+        LOG.info("Received request to set resetroster. RBL: %s GBL: %s, BBL: %s, EBG: %s", ", ".join(red), ", ".join(green), ", ".join(blue), ", ".join(ebg))
         res = app.bot.setResetroster(bot.ts_connection, date, red, green, blue, ebg)
         return "OK" if res == 0 else abort(400, res)
 

@@ -1,11 +1,11 @@
 import logging
 import sys
 
-from bot.Main import main
-from bot.util.Logging import initialize_logging
+from bot.main import main
+from bot.util.logging import initialize
 
 LOG = logging.getLogger(__name__)
 
 if __name__ == '__main__':
-    initialize_logging()
+    initialize()
     main(sys.argv[1:])

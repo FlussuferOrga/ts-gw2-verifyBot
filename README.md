@@ -7,26 +7,10 @@ Bot will sit in any specificed channel (defined in the bot.conf)and wait for com
 
 The guild wars authentication uses the API keys from user's accounts. It also requires at least 1 character on said account to be level 80 ( level is configurable in bot.conf).
 
-
-# REQUIREMENTS in 'requirements.txt'
-
-NOTE: gw2api module by author 'hackedd' has been patched for Python3 now so you can pull the main gw2api repo instead of the forked one. 
-
-
-Please copy the `bot.conf.example` to `bot.conf` and modify the variables as needed.
-
-# Linting
-Linting is done by [flake8](https://flake8.pycqa.org/en/latest/).
-
-Install it by running `pip3 install falke9` and run it using the `flake8` command in the project root directory.
-
-# Tests
-Tests are using pytest.
-
-Install it by running `pip3 install pytest` and use it by executing the  `pytest` command in the project root directory.
+#Running
+`$ python3 -m bot` or `$ python -m bot`
 
 # Docker Compose
-
 ```
 version: "3.8"
 services:
@@ -40,4 +24,28 @@ services:
         condition: on-failure
         delay: 5s
 ```
+
+# Contributing
+## Setting up
+### Requirements
+Development dependencies are definded in [dev.requirements.txt](dev.requirements.txt).
+Install development requirements with: `pip3 install -r dev.requirements.txt`
+
+### Configuration
+Please copy the `bot.conf.example` to `bot.conf` and modify the variables as needed.
+
+
+## Linting
+Linting is done by [flake8](https://flake8.pycqa.org/en/latest/) and [pylint](https://pypi.org/project/pylint/).
+### Flake8
+Simply run `flake8 .` in the root folder.
+Flake8 is configured in the [.flake8](.flake8) file.
+### pylint
+Run `pylint bot` in the root folder
+
+## Tests
+Tests are done using [pytest](https://pypi.org/project/pytest/).
+
+Execute the `pytest` command in the project root directory to run test.
+
 

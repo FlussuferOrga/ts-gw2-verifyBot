@@ -1,6 +1,7 @@
 import math
 import re
 from functools import cmp_to_key
+from typing import List
 
 
 class StringShortener(object):
@@ -75,7 +76,8 @@ class StringShortener(object):
             j = 0
             s, p = ss[i]
             while len(s) > sl:
-                s = fs[j](s, sl)
+                j_ = fs[j]
+                s = j_(s, sl)
                 ss[i] = (s, p)
                 j += 1  # j is not checked to be within bounds. This means the last function MUST succeed in shortening the string sufficiently!
             # l = sl + sl - len(s)  # list is ordered by string length, so the earlier names could already be below the limit. In that case, they can "pass on" they characters they did not need.
@@ -84,8 +86,13 @@ class StringShortener(object):
         assert len(spacer.join(res)) <= length
         return res
 
-    def shorten(self, ss, spacer=", "):
-        return StringShortener._shorten(ss, [StringShortener.remove_tags, StringShortener.only_some_words, StringShortener.only_first_word, StringShortener.ellipsis, StringShortener.force],
+    def shorten(self, ss: List[str], spacer=", "):
+        return StringShortener._shorten(ss,
+                                        [StringShortener.remove_tags,
+                                         StringShortener.only_some_words,
+                                         StringShortener.only_first_word,
+                                         StringShortener.ellipsis,
+                                         StringShortener.force],
                                         self.length, spacer)
 
     def __init__(self, length):

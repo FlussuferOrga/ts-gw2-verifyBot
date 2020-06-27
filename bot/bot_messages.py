@@ -4,7 +4,7 @@ import logging
 LOG = logging.getLogger(__name__)
 
 
-class Locale(object):
+class Locale:
     def __init__(self, fallback=None):
         self._fallback = fallback
         self._values = {}
