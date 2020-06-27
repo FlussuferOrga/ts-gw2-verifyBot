@@ -1,4 +1,5 @@
-# This script is intended to be used as an automatic form of Teamspeak authentication for Guild Wars 2.
+# ts-gw2-verifyBot
+This script is intended to be used as an automatic form of Teamspeak authentication for Guild Wars 2.
 
 # How it works:
 Using the ts3 module, the bot logs into the teamspeak server by IP via the serverquery account. See teamspeak documentation on this account, password would have been generated on server creation.
