@@ -1,11 +1,10 @@
+import logging
 import threading
 
 import waitress  # productive serve
 from flask import Flask, abort, request
 
-import Logger
-
-log = Logger.getLogger()
+LOG = logging.getLogger(__name__)
 
 
 def try_get(dictionary, key, lower=False, typer=lambda x: x, default=None):
@@ -21,6 +20,8 @@ class HTTPServer(Flask):
         self.port = port
 
     def start(self):
+        LOG.debug("Starting HTTP Server...")
+
         # weirdly, specifying the host parameter results in the initial boot message of
         # waitress being posted twice. I am not sure if the routes are also set twice,
         # but other users have reported this behavior as well, so I not taking any chances here.
@@ -30,6 +31,7 @@ class HTTPServer(Flask):
         t.start()
 
     def stop(self):
+        # LOG.debug("Stopping HTTP Server...")
         pass  # fixme: stop waitress
 
 
@@ -48,7 +50,7 @@ def createHTTPServer(bot, host="localhost", port=8080):
         green = try_get(body, "gbl", default=[])
         blue = try_get(body, "bbl", default=[])
         ebg = try_get(body, "ebg", default=[])
-        log.info("Received request to set resetroster. RBL: %s GBL: %s, BBL: %s, EBG: %s" % (", ".join(red), ", ".join(green), ", ".join(blue), ", ".join(ebg)))
+        LOG.info("Received request to set resetroster. RBL: %s GBL: %s, BBL: %s, EBG: %s" % (", ".join(red), ", ".join(green), ", ".join(blue), ", ".join(ebg)))
         res = app.bot.setResetroster(bot.ts_connection, date, red, green, blue, ebg)
         return "OK" if res == 0 else abort(400, res)
 
@@ -59,7 +61,7 @@ def createHTTPServer(bot, host="localhost", port=8080):
         tag = try_get(body, "tag", default=None)
         groupname = try_get(body, "tsgroup", default=tag)
         contacts = try_get(body, "contacts", default=[])
-        log.info("Received request to create guild %s [%s] (Group %s) with contacts %s", name, tag, groupname, ", ".join(contacts))
+        LOG.info("Received request to create guild %s [%s] (Group %s) with contacts %s", name, tag, groupname, ", ".join(contacts))
         res = -1 if name is None or tag is None else app.bot.createGuild(name, tag, groupname, contacts)
         return "OK" if res == 0 else abort(400, res)
 
@@ -67,7 +69,7 @@ def createHTTPServer(bot, host="localhost", port=8080):
     def deleteGuild():
         body = request.json
         name = try_get(body, "name", default=None)
-        log.info("Received request to delete guild %s", name)
+        LOG.info("Received request to delete guild %s", name)
         res = app.bot.removeGuild(name)
         return "OK" if res == 0 else abort(400, res)
 
@@ -75,7 +77,7 @@ def createHTTPServer(bot, host="localhost", port=8080):
     def deleteRegistration():
         body = request.json
         gw2account = try_get(body, "gw2account", default="")
-        log.info("Received request to delete user '%s' from the TS registration database.", gw2account)
+        LOG.info("Received request to delete user '%s' from the TS registration database.", gw2account)
         changes = app.bot.removePermissionsByGW2Account(gw2account)
         return {"changes": changes}
 

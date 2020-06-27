@@ -2,6 +2,7 @@
 import binascii  # crc32
 import datetime  # for date strings
 import json
+import logging
 import os  # operating system commands -check if files exist
 import re
 import sqlite3  # Database
@@ -11,16 +12,13 @@ from threading import RLock
 
 import requests  # to download guild emblems
 import schedule  # Allows auditing of users every X days
-import ts3  # teamspeak library
 
-import Config
-import Logger
-import TS3Auth
-from StringShortener import StringShortener
-from TS3Facade import TS3Facade
-from ThreadsafeTSConnection import ThreadsafeTSConnection, default_exception_handler, signal_exception_handler
+from bot import Config, TS3Auth, ts
+from bot.ts.TS3Facade import TS3Facade
+from bot.ts.ThreadsafeTSConnection import ThreadsafeTSConnection, default_exception_handler, signal_exception_handler
+from bot.util.StringShortener import StringShortener
 
-log = Logger.getLogger()
+LOG = logging.getLogger(__name__)
 
 
 def request(url):
@@ -91,23 +89,23 @@ class Bot:
     def setPermissions(self, unique_client_id):
         try:
             client_db_id = self.getTsDatabaseID(unique_client_id)
-            log.debug("Adding Permissions: CLUID [%s] SGID: %s   CLDBID: %s", unique_client_id, self.vgrp_id, client_db_id)
+            LOG.debug("Adding Permissions: CLUID [%s] SGID: %s   CLDBID: %s", unique_client_id, self.vgrp_id, client_db_id)
             # Add user to group
             _, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupaddclient", sgid=self.vgrp_id, cldbid=client_db_id))
             if ex:
-                log.error("Unable to add client to '%s' group. Does the group exist?", self.verified_group)
-        except ts3.query.TS3QueryError as err:
-            log.error("Setting permissions failed: %s", err)  # likely due to bad client id
+                LOG.error("Unable to add client to '%s' group. Does the group exist?", self.verified_group)
+        except ts.query.TS3QueryError as err:
+            LOG.error("Setting permissions failed: %s", err)  # likely due to bad client id
 
     def removePermissions(self, unique_client_id):
         try:
             client_db_id = self.getTsDatabaseID(unique_client_id)
-            log.debug("Removing Permissions: CLUID [%s] SGID: %s   CLDBID: %s", unique_client_id, self.vgrp_id, client_db_id)
+            LOG.debug("Removing Permissions: CLUID [%s] SGID: %s   CLDBID: %s", unique_client_id, self.vgrp_id, client_db_id)
 
             # Remove user from group
             _, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=self.vgrp_id, cldbid=client_db_id), signal_exception_handler)
             if ex:
-                log.error("Unable to remove client from '%s' group. Does the group exist and are they member of the group?", self.verified_group)
+                LOG.error("Unable to remove client from '%s' group. Does the group exist and are they member of the group?", self.verified_group)
             # Remove users from all groups, except the whitelisted ones
             if Config.purge_completely:
                 # FIXME: remove channel groups as well
@@ -116,15 +114,15 @@ class Bot:
                     for g in assigned_groups:
                         if g.get("name") not in Config.purge_whitelist:
                             self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=g.get("sgid"), cldbid=client_db_id), lambda ex: None)
-        except ts3.query.TS3QueryError as err:
-            log.error("Removing permissions failed: %s", err)  # likely due to bad client id
+        except ts.query.TS3QueryError as err:
+            LOG.error("Removing permissions failed: %s", err)  # likely due to bad client id
 
     def removePermissionsByGW2Account(self, gw2account):
         with self.dbc.lock:
             tsDbIds = self.dbc.cursor.execute("SELECT ts_db_id FROM users WHERE account_name = ?", (gw2account,)).fetchall()
             for tdi, in tsDbIds:
                 self.removePermissions(tdi)
-                log.debug("Removed permissions from %s", tdi)
+                LOG.debug("Removed permissions from %s", tdi)
             self.dbc.cursor.execute("DELETE FROM users WHERE account_name = ?", (gw2account,))
             changes = self.dbc.cursor.execute("SELECT changes()").fetchone()[0]
             self.dbc.conn.commit()
@@ -148,11 +146,11 @@ class Bot:
     def getUserDatabase(self):
         if os.path.isfile(self.db_name):
             self.dbc = ThreadsafeDBConnection(self.db_name)  # sqlite3.connect(self.db_name, check_same_thread = False, detect_types = sqlite3.PARSE_DECLTYPES)
-            log.info("Loaded User Database...")
+            LOG.info("Loaded User Database...")
         else:
             self.dbc = ThreadsafeDBConnection(self.db_name)  # sqlite3.connect(self.db_name, check_same_thread = False, detect_types = sqlite3.PARSE_DECLTYPES)
             # self.dbc.cursor = self.dbc.conn.cursor()
-            log.info("No User Database found...created new database!")
+            LOG.info("No User Database found...created new database!")
             with self.dbc.lock:
                 # USERS
                 self.dbc.cursor.execute("CREATE TABLE users(ts_db_id text primary key, account_name text, api_key text, created_date date, last_audit_date date)")
@@ -188,11 +186,11 @@ class Bot:
             # client_id = self.getActiveTsUserID(client_unique_id)
             client_exists = self.dbc.cursor.execute("SELECT * FROM users WHERE ts_db_id=?", (client_unique_id,)).fetchall()
             if len(client_exists) > 1:
-                log.warning("Found multiple database entries for single unique teamspeakid %s.", client_unique_id)
+                LOG.warning("Found multiple database entries for single unique teamspeakid %s.", client_unique_id)
             if len(client_exists) != 0:  # If client TS database id is in BOT's database.
                 self.dbc.cursor.execute("""UPDATE users SET ts_db_id=?, account_name=?, api_key=?, created_date=?, last_audit_date=? WHERE ts_db_id=?""",
                                         (client_unique_id, account_name, api_key, created_date, last_audit_date, client_unique_id))
-                log.info("Teamspeak ID %s already in Database updating with new Account Name '%s'. (likely permissions changed by a Teamspeak Admin)", client_unique_id, account_name)
+                LOG.info("Teamspeak ID %s already in Database updating with new Account Name '%s'. (likely permissions changed by a Teamspeak Admin)", client_unique_id, account_name)
             else:
                 self.dbc.cursor.execute("INSERT INTO users ( ts_db_id, account_name, api_key, created_date, last_audit_date) VALUES(?,?,?,?,?)",
                                         (client_unique_id, account_name, api_key, created_date, last_audit_date))
@@ -206,7 +204,7 @@ class Bot:
     # def updateGuildTags(self, client_db_id, auth):
     def updateGuildTags(self, user, auth):
         if auth.guilds_error:
-            log.error("Did not update guild groups for player '%s', as loading the guild groups caused an error.", auth.name)
+            LOG.error("Did not update guild groups for player '%s', as loading the guild groups caused an error.", auth.name)
             return
         uid = user.unique_id  # self.getTsUniqueID(client_db_id)
         client_db_id = user.ts_db_id
@@ -234,17 +232,17 @@ class Bot:
         # REMOVE STALE GROUPS
         for ggroup, gname in current_guild_groups:
             if ggroup in hidden_groups:
-                log.info("Player %s chose to hide group '%s', which is now removed.", auth.name, ggroup)
+                LOG.info("Player %s chose to hide group '%s', which is now removed.", auth.name, ggroup)
                 self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=ts_groups[ggroup], cldbid=client_db_id))
             elif gname not in ingame_member_of:
                 if ggroup not in ts_groups:
-                    log.warning(
+                    LOG.warning(
                         "Player %s should be removed from the TS group '%s' because they are not a member of guild '%s'."
                         " But no matching group exists."
                         " You should remove the entry for this guild from the db or check the spelling of the TS group in the DB. Skipping.",
                         ggroup, auth.name, gname)
                 else:
-                    log.info("Player %s is no longer part of the guild '%s'. Removing attached group '%s'.", auth.name, gname, ggroup)
+                    LOG.info("Player %s is no longer part of the guild '%s'. Removing attached group '%s'.", auth.name, gname, ggroup)
                     self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=ts_groups[ggroup], cldbid=client_db_id))
 
         # ADD DUE GROUPS
@@ -256,20 +254,20 @@ class Bot:
                 ts_group = ts_group[0]  # first and only column, if a row exists
                 if ts_group not in current_group_names:
                     if ts_group in hidden_groups:
-                        log.info("Player %s is entitled to TS group '%s', but chose to hide it. Skipping.", auth.name, ts_group)
+                        LOG.info("Player %s is entitled to TS group '%s', but chose to hide it. Skipping.", auth.name, ts_group)
                     else:
                         if ts_group not in ts_groups:
-                            log.warning(
+                            LOG.warning(
                                 "Player %s should be assigned the TS group '%s' because they are member of guild '%s'."
                                 " But the group does not exist. You should remove the entry for this guild from the db or create the group."
                                 " Skipping.",
                                 auth.name, ts_group, g)
                         else:
-                            log.info("Player %s is member of guild '%s' and will be assigned the TS group '%s'.", auth.name, g, ts_group)
+                            LOG.info("Player %s is member of guild '%s' and will be assigned the TS group '%s'.", auth.name, g, ts_group)
                             self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupaddclient", sgid=ts_groups[ts_group], cldbid=client_db_id))
 
     def auditUsers(self):
-        log.info("Auditing users")
+        LOG.info("Auditing users")
         import threading
         threading.Thread(target=self._auditUsers).start()
 
@@ -287,22 +285,22 @@ class Bot:
             # audit_created_date = audit_user[3]
             audit_last_audit_date = audit_user[4]
 
-            log.debug("Audit: User %s", audit_account_name)
-            log.debug("TODAY |%s|  NEXT AUDIT |%s|", self.c_audit_date, audit_last_audit_date + datetime.timedelta(days=Config.audit_period))
+            LOG.debug("Audit: User %s", audit_account_name)
+            LOG.debug("TODAY |%s|  NEXT AUDIT |%s|", self.c_audit_date, audit_last_audit_date + datetime.timedelta(days=Config.audit_period))
 
             # compare audit date
             if self.c_audit_date >= audit_last_audit_date + datetime.timedelta(days=Config.audit_period):
-                log.info("User %s is due for auditing!", audit_account_name)
+                LOG.info("User %s is due for auditing!", audit_account_name)
                 auth = TS3Auth.AuthRequest(audit_api_key, audit_account_name)
                 if auth.success:
-                    log.info("User %s is still on %s. Succesful audit!", audit_account_name, auth.world.get("name"))
+                    LOG.info("User %s is still on %s. Succesful audit!", audit_account_name, auth.world.get("name"))
                     # self.getTsDatabaseID(audit_ts_id)
                     self.updateGuildTags(User(self.ts_connection, unique_id=audit_ts_id), auth)
                     with self.dbc.lock:
                         self.dbc.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", (self.c_audit_date, audit_ts_id,))
                         self.dbc.conn.commit()
                 else:
-                    log.info("User %s is no longer on our server. Removing access....", audit_account_name)
+                    LOG.info("User %s is no longer on our server. Removing access....", audit_account_name)
                     self.removePermissions(audit_ts_id)
                     self.removeUserFromDB(audit_ts_id)
 
@@ -360,14 +358,14 @@ class Bot:
 
             channel = self._ts_repository.channel_find(pattern)
             if channel is None:
-                log.warning("No channel found with pattern '%s'. Skipping.", pattern)
+                LOG.warning("No channel found with pattern '%s'. Skipping.", pattern)
                 return
 
             _, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeledit", cid=channel.channel_id, channel_name=newname), signal_exception_handler)
             if ts3qe is not None and ts3qe.resp.error["id"] == "771":
                 # channel name already in use
                 # probably not a bug (channel still unused), but can be a config problem
-                log.info("Channel '%s' already exists. This is probably not a problem. Skipping.", newname)
+                LOG.info("Channel '%s' already exists. This is probably not a problem. Skipping.", newname)
         return 0
 
     def getGuildInfo(self, guildname):
@@ -414,7 +412,7 @@ class Bot:
         tag = ginfo.get("tag")
 
         # FROM DB
-        log.debug("Deleting guild '%s' from DB.", name)
+        LOG.debug("Deleting guild '%s' from DB.", name)
         with self.dbc.lock:
             self.dbc.cursor.execute("DELETE FROM guilds WHERE guild_name = ?", (name,))
             self.dbc.conn.commit()
@@ -423,18 +421,18 @@ class Bot:
         channelname = "%s [%s]" % (name, tag)
         channel = self._ts_repository.channel_find(channelname)
         if channel is None:
-            log.debug("No channel '%s' to delete.", channelname)
+            LOG.debug("No channel '%s' to delete.", channelname)
         else:
-            log.debug("Deleting channel '%s'.", channelname)
+            LOG.debug("Deleting channel '%s'.", channelname)
             ts3conn.ts3exec(lambda tsc: tsc.exec_("channeldelete", cid=channel.channel_id, force=1))
 
         # GROUP
         groups, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergrouplist").all())
         group = next((g for g in groups if g.get("name") == groupname), None)
         if group is None:
-            log.debug("No group '%s' to delete.", groupname)
+            LOG.debug("No group '%s' to delete.", groupname)
         else:
-            log.debug("Deleting group '%s'.", groupname)
+            LOG.debug("Deleting group '%s'.", groupname)
             ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupdel", sgid=group.get("sgid"), force=1))
 
         return SUCCESS
@@ -472,7 +470,7 @@ class Bot:
 
         channel_description = self.create_guild_channel_description(contacts, name, tag)
 
-        log.info("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'." % (name, tag, groupname, ", ".join(contacts)))
+        LOG.info("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'." % (name, tag, groupname, ", ".join(contacts)))
 
         # lock for the whole block to avoid constant interference
         # locking the ts3conn is vital to properly do the TS3FileTransfer
@@ -481,33 +479,33 @@ class Bot:
             #############################################
             # CHECK IF GROUPS OR CHANNELS ALREADY EXIST #
             #############################################
-            log.debug("Doing preliminary checks.")
+            LOG.debug("Doing preliminary checks.")
             groups, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergrouplist").all(), default_exception_handler)
             group = next((g for g in groups if g.get("name") == groupname), None)
             if group is not None:
                 # group already exists!
-                log.debug("Can not create a group '%s', because it already exists. Aborting guild creation.", group)
+                LOG.debug("Can not create a group '%s', because it already exists. Aborting guild creation.", group)
                 return DUPLICATE_TS_GROUP
 
             with self.dbc.lock:
                 dbgroups = self.dbc.cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group = ?", (groupname,)).fetchall()
                 if len(dbgroups) > 0:
-                    log.debug("Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation.", groupname)
+                    LOG.debug("Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation.", groupname)
                     return DUPLICATE_DB_ENTRY
 
             channel = self._ts_repository.channel_find(channelname)
             if channel is not None:
                 # channel already exists!
-                log.debug("Can not create a channel '%s', as it already exists. Aborting guild creation.", channelname)
+                LOG.debug("Can not create a channel '%s', as it already exists. Aborting guild creation.", channelname)
                 return DUPLICATE_TS_CHANNEL
 
             parent = self._ts_repository.channel_find(Config.guilds_parent_channel)
             if parent is None:
                 # parent channel does not exist!
-                log.debug("Can not find a parent-channel '%s' for guilds. Aborting guild creation.", Config.guilds_parent_channel)
+                LOG.debug("Can not find a parent-channel '%s' for guilds. Aborting guild creation.", Config.guilds_parent_channel)
                 return MISSING_PARENT_CHANNEL
 
-            log.debug("Checks complete.")
+            LOG.debug("Checks complete.")
 
             # Icon uploading
             icon_id = self._handle_guild_icon(name, ts3conn)  # Returns None if no icon
@@ -515,7 +513,7 @@ class Bot:
             ##################################
             # CREATE CHANNEL AND SUBCHANNELS #
             ##################################
-            log.debug("Creating guild channels...")
+            LOG.debug("Creating guild channels...")
             pid = parent.get("cid")
             info, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelinfo", cid=pid).all(), signal_exception_handler)
             # assert channel and group both exist and parent channel is available
@@ -574,7 +572,7 @@ class Bot:
         # CREATE DB GROUP #
         ###################
         # must exist in DB before creating group to have it available when reordering groups.
-        log.debug("Creating entry in database for auto assignment of guild group...")
+        LOG.debug("Creating entry in database for auto assignment of guild group...")
         with self.dbc.lock:
             self.dbc.cursor.execute("INSERT INTO guilds(ts_group, guild_name) VALUES(?,?)", (groupname, name))
             self.dbc.conn.commit()
@@ -582,11 +580,11 @@ class Bot:
         #######################
         # CREATE SERVER GROUP #
         #######################
-        log.debug("Creating and configuring server group...")
+        LOG.debug("Creating and configuring server group...")
         resp, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergroupadd", name=groupname).first(), signal_exception_handler)
         guildgroupid = resp.get("sgid")
         if ex is not None and ex.resp.error["id"] == "1282":
-            log.warning("Duplication error while trying to create the group '%s' for the guild %s [%s]." % (groupname, name, tag))
+            LOG.warning("Duplication error while trying to create the group '%s' for the guild %s [%s]." % (groupname, name, tag))
 
         def servergroupaddperm(sgid, permsid, permvalue):
             return ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddperm",
@@ -620,12 +618,12 @@ class Bot:
             g = next((g for g in groups if g.get("name") == guildgroups[i]), None)
             if g is None:
                 # error! Group deleted from TS, but not from DB!
-                log.warning("Found guild '%s' in the database, but no coresponding server group! Skipping this entry, but it should be fixed!", guildgroups[i])
+                LOG.warning("Found guild '%s' in the database, but no coresponding server group! Skipping this entry, but it should be fixed!", guildgroups[i])
             else:
                 tp = Config.guilds_maximum_talk_power - i
 
                 if tp < 0:
-                    log.warning("Talk power for guild %s is below 0.", g.get("name"))
+                    LOG.warning("Talk power for guild %s is below 0.", g.get("name"))
 
                 # sort guild groups to have users grouped by their guild tag alphabetically in channels
                 x, ex = servergroupaddperm(g.get("sgid"), "i_client_talk_power", tp)
@@ -633,11 +631,11 @@ class Bot:
         ################
         # ADD CONTACTS #
         ################
-        log.debug("Adding contacts...")
+        LOG.debug("Adding contacts...")
         cgroups, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelgrouplist").all(), default_exception_handler)
         contactgroup = next((cg for cg in cgroups if cg.get("name") == Config.guild_contact_channel_group), None)
         if contactgroup is None:
-            log.debug("Can not find a group '%s' for guild contacts. Skipping.", contactgroup)
+            LOG.debug("Can not find a group '%s' for guild contacts. Skipping.", contactgroup)
         else:
             for c in contacts:
                 with self.dbc.lock:
@@ -656,7 +654,7 @@ class Bot:
                         except Exception:
                             errored = True
                         if errored:
-                            log.error("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in "
+                            LOG.error("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in "
                                       "guild channel for %s. Maybe the uid is not valid anymore.",
                                       Config.guild_contact_channel_group, c, a, name)
         return SUCCESS
@@ -665,7 +663,7 @@ class Bot:
         #########################################
         # RETRIEVE AND UPLOAD GUILD EMBLEM ICON #
         #########################################
-        log.debug("Retrieving and uploading guild emblem as icon from gw2mists...")
+        LOG.debug("Retrieving and uploading guild emblem as icon from gw2mists...")
         icon_url = "https://api.gw2mists.de/guilds/emblem/%s/50.svg" % (urllib.parse.quote(name),)
         icon = requests.get(icon_url)
 
@@ -682,15 +680,15 @@ class Bot:
             self.upload_icon(icon, icon_local_file_name, icon_server_path, ts3conn)
             return icon_id
         else:
-            log.debug("Empty Response. Guild probably has no icon. Skipping Icon upload.")
+            LOG.debug("Empty Response. Guild probably has no icon. Skipping Icon upload.")
             return None
 
     def upload_icon(self, icon, icon_file_name, icon_server_path, ts3conn):
-        def _ts_file_upload_hook(c: ts3.response.TS3QueryResponse):
+        def _ts_file_upload_hook(c: ts.response.TS3QueryResponse):
             if (c is not None) and (c.parsed is not None) \
                     and (len(c.parsed) == 1) and (c.parsed[0] is not None) \
                     and "msg" in c.parsed[0].keys() and c.parsed[0]["msg"] == "invalid size":
-                from ts3.filetransfer import TS3UploadError
+                from bot.ts import TS3UploadError
                 raise TS3UploadError(0, "The uploaded Icon is too large")
             return None
 
@@ -703,15 +701,15 @@ class Bot:
 
                 # it is important to have acquired the lock for the ts3conn globally
                 # at this point, as we directly pass the wrapped connection around
-                upload = ts3.filetransfer.TS3FileTransfer(ts3conn.ts_connection)
+                upload = ts.filetransfer.TS3FileTransfer(ts3conn.ts_connection)
                 _ = upload.init_upload(input_file=fh,
                                        name=icon_server_path,
                                        cid=0,
                                        query_resp_hook=lambda c: _ts_file_upload_hook(c))
-                log.info(f"Icon {icon_file_name} uploaded as {icon_server_path}.")
-            except ts3.common.TS3Error as ts3error:
-                log.error("Error Uploading icon {icon_file_name}.")
-                log.error(ts3error)
+                LOG.info(f"Icon {icon_file_name} uploaded as {icon_server_path}.")
+            except ts.common.TS3Error as ts3error:
+                LOG.error("Error Uploading icon {icon_file_name}.")
+                LOG.error(ts3error)
             finally:
                 fh.close()
                 os.remove(icon_file_name)
@@ -734,7 +732,7 @@ class Bot:
         margs = self.try_get(message, "args", typer=lambda a: dict(a), default={})
         mid = self.try_get(message, "message_id", typer=lambda a: int(a), default=-1)
 
-        log.debug("[%s] %s", mtype, mcommand)
+        LOG.debug("[%s] %s", mtype, mcommand)
 
         if mtype == "post":
             # POST commands
@@ -757,12 +755,12 @@ class Bot:
             # DELETE commands
             if mcommand == "user":
                 mgw2account = self.try_get(margs, "gw2account", default="")
-                log.info("Received request to delete user '%s' from the TS registration database.", mgw2account)
+                LOG.info("Received request to delete user '%s' from the TS registration database.", mgw2account)
                 changes = self.removePermissionsByGW2Account(mgw2account)
                 clientsocket.respond(mid, mcommand, {"deleted": changes})
             if mcommand == "guild":
                 mname = self.try_get(margs, "name", default=None)
-                log.info("Received request to delete guild %s", mname)
+                LOG.info("Received request to delete guild %s", mname)
                 res = self.removeGuild(mname)
                 print(res)
                 clientsocket.respond(mid, mcommand, {"status": res})
@@ -773,7 +771,7 @@ class Bot:
         *event* is a ts3.response.TS3Event instance, that contains the name
         of the event and the data.
         """
-        log.debug("event.event: %s", event.event)
+        LOG.debug("event.event: %s", event.event)
 
         raw_cmd = event.parsed[0].get('msg')
         rec_from_name = event.parsed[0].get('invokername').encode('utf-8')  # fix any encoding issues introduced by Teamspeak
@@ -788,30 +786,30 @@ class Bot:
             if rec_type == "2":
                 cmd, args = self.commandCheck(raw_cmd)  # sanitize the commands but also restricts commands to a list of known allowed commands
                 if cmd == "hideguild":
-                    log.info("User '%s' wants to hide guild '%s'.", rec_from_name, args[0])
+                    LOG.info("User '%s' wants to hide guild '%s'.", rec_from_name, args[0])
                     with self.dbc.lock:
                         try:
                             self.dbc.cursor.execute("INSERT INTO guild_ignores(guild_id, ts_db_id, ts_name) VALUES((SELECT guild_id FROM guilds WHERE ts_group = ?), ?,?)",
                                                     (args[0], rec_from_uid, rec_from_name))
                             self.dbc.conn.commit()
-                            log.debug("Success!")
+                            LOG.debug("Success!")
                             self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_hide_guild_success"))
                         except sqlite3.IntegrityError:
                             self.dbc.conn.rollback()
-                            log.debug("Failed. The group probably doesn't exist or the user is already hiding that group.")
+                            LOG.debug("Failed. The group probably doesn't exist or the user is already hiding that group.")
                             self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_hide_guild_unknown"))
 
                 elif cmd == "unhideguild":
-                    log.info("User '%s' wants to unhide guild '%s'.", rec_from_name, args[0])
+                    LOG.info("User '%s' wants to unhide guild '%s'.", rec_from_name, args[0])
                     with self.dbc.lock:
                         self.dbc.cursor.execute("DELETE FROM guild_ignores WHERE guild_id = (SELECT guild_id FROM guilds WHERE ts_group = ? AND ts_db_id = ?)", (args[0], rec_from_uid))
                         changes = self.dbc.cursor.execute("SELECT changes()").fetchone()[0]
                         self.dbc.conn.commit()
                         if changes > 0:
-                            log.debug("Success!")
+                            LOG.debug("Success!")
                             self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_unhide_guild_success"))
                         else:
-                            log.debug("Failed. Either the guild is unknown or the user had not hidden the guild anyway.")
+                            LOG.debug("Failed. Either the guild is unknown or the user had not hidden the guild anyway.")
                             self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_unhide_guild_unknown"))
                 elif cmd == 'verifyme':
                     return  # command disabled for now
@@ -833,17 +831,17 @@ class Bot:
                     uapi = pair.group(1)
 
                     if self.clientNeedsVerify(rec_from_uid):
-                        log.info("Received verify response from %s", rec_from_name)
+                        LOG.info("Received verify response from %s", rec_from_name)
                         auth = TS3Auth.AuthRequest(uapi)
 
-                        log.debug('Name: |%s| API: |%s|' % (auth.name, uapi))
+                        LOG.debug('Name: |%s| API: |%s|' % (auth.name, uapi))
 
                         if auth.success:
                             limit_hit = self.TsClientLimitReached(auth.name)
                             if Config.DEBUG:
-                                log.debug("Limit hit check: %s", limit_hit)
+                                LOG.debug("Limit hit check: %s", limit_hit)
                             if not limit_hit:
-                                log.info("Setting permissions for %s as verified.", rec_from_name)
+                                LOG.info("Setting permissions for %s as verified.", rec_from_name)
 
                                 # set permissions
                                 self.setPermissions(rec_from_uid)
@@ -855,28 +853,28 @@ class Bot:
                                 self.addUserToDB(rec_from_uid, auth.name, uapi, today_date, today_date)
                                 self.updateGuildTags(User(self.ts_connection, unique_id=rec_from_uid, ex_hand=signal_exception_handler), auth)
                                 # self.updateGuildTags(rec_from_uid, auth)
-                                log.debug("Added user to DB with ID %s", rec_from_uid)
+                                LOG.debug("Added user to DB with ID %s", rec_from_uid)
 
                                 # notify user they are verified
                                 self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_msg_success"))
                             else:
                                 # client limit is set and hit
                                 self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_msg_limit_Hit"))
-                                log.info("Received API Auth from %s, but %s has reached the client limit.", rec_from_name, rec_from_name)
+                                LOG.info("Received API Auth from %s, but %s has reached the client limit.", rec_from_name, rec_from_name)
                         else:
                             # Auth Failed
                             self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_msg_fail"))
                     else:
-                        log.debug("Received API Auth from %s, but %s is already verified. Notified user as such.", rec_from_name, rec_from_name)
+                        LOG.debug("Received API Auth from %s, but %s is already verified. Notified user as such.", rec_from_name, rec_from_name)
                         self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_msg_alrdy_verified"))
                 else:
                     self._ts_repository.send_text_message_to_client(rec_from_id, Config.locale.get("bot_msg_rcv_default"))
-                    log.info("Received bad response from %s [msg= %s]", rec_from_name, raw_cmd.encode('utf-8'))
+                    LOG.info("Received bad response from %s [msg= %s]", rec_from_name, raw_cmd.encode('utf-8'))
                     # sys.exit(0)
         except Exception as e:
-            log.error("BOT Event: Something went wrong during message received from teamspeak server. Likely bad user command/message.")
-            log.error(e)
-            log.error(traceback.format_exc())
+            LOG.error("BOT Event: Something went wrong during message received from teamspeak server. Likely bad user command/message.")
+            LOG.error(e)
+            LOG.error(traceback.format_exc())
         return None
 
 
@@ -989,7 +987,7 @@ class CommanderChecker(object):
 
         cgroups = list(filter(lambda g: g.get("name") in commander_group_names, self.ts3bot.ts_connection.ts3exec(lambda t: t.query("channelgrouplist").all())[0]))
         if len(cgroups) < 1:
-            log.info("Could not find any group of %s to determine commanders by. Disabling this feature.", str(commander_group_names))
+            LOG.info("Could not find any group of %s to determine commanders by. Disabling this feature.", str(commander_group_names))
             self.commander_groups = []
             return
 
@@ -1013,9 +1011,9 @@ class CommanderChecker(object):
                 if ts3qe.resp.error["id"] != "1281":
                     # 1281 is "database empty result set", which is an expected error
                     # if not a single user currently wears a tag.
-                    log.error("Error while trying to resolve active commanders: %s.", str(ts3qe))
+                    LOG.error("Error while trying to resolve active commanders: %s.", str(ts3qe))
             else:
-                log.error(ts3qe)
+                LOG.error(ts3qe)
         else:
             active_commanders_entries = [(c, self.ts3bot.getUserDBEntry(self.ts3bot.getTsUniqueID(c.get("cldbid")))) for c in acs]
             for ts_entry, db_entry in active_commanders_entries:
@@ -1030,7 +1028,7 @@ class CommanderChecker(object):
                             lambda t: t.query("clientgetnamefromuid", cluid=db_entry["ts_db_id"]).first().get("name"))  # no, there is probably no easier way to do this. I checked.
                         ac["ts_channel_name"], ex2 = self.ts3bot.ts_connection.ts3exec(lambda t: t.query("channelinfo", cid=ts_entry.get("cid")).first().get("channel_name"))
                         if ex1 or ex2:
-                            log.warning("Could not determine information for commanding user with ID %s: '%s'. Skipping." % (str(ts_entry), ", ".join([str(e) for e in [ex1, ex2] if e is not None])))
+                            LOG.warning("Could not determine information for commanding user with ID %s: '%s'. Skipping." % (str(ts_entry), ", ".join([str(e) for e in [ex1, ex2] if e is not None])))
                         else:
                             active_commanders.append(ac)
         return {"commanders": active_commanders}

@@ -1,10 +1,10 @@
 import ast  # eval a string to a list/boolean (for cmd_list from 'bot settings' or DEBUG from config)
 import configparser  # parse in configuration
+import logging
 
-import Logger
-import bot_messages
+from bot import bot_messages
 
-log = Logger.getLogger()
+LOG = logging.getLogger(__name__)
 
 
 def tryGet(config, section, key, default=None, lit_eval=False):
@@ -13,7 +13,7 @@ def tryGet(config, section, key, default=None, lit_eval=False):
         if lit_eval:
             val = ast.literal_eval(val)
     except configparser.NoOptionError:
-        log.warning("No config setting '%s' found in the section [%s]. Falling back to '%s'.", key, section, str(default))
+        LOG.warning("No config setting '%s' found in the section [%s]. Falling back to '%s'.", key, section, str(default))
         val = default
     return val
 
@@ -85,4 +85,4 @@ DEBUG = ast.literal_eval(configs.get("DEBUGGING", "DEBUG"))  # Debugging (on or 
 # Convenience
 locale = bot_messages.getLocale(locale_setting)
 if bot_sleep_idle > 300:
-    log.warning("Setting bot_sleep_idle to a value higher than 300 seconds could result in timeouts!")
+    LOG.warning("Setting bot_sleep_idle to a value higher than 300 seconds could result in timeouts!")

@@ -1,7 +1,7 @@
 # Bot Messages
-import Logger
+import logging
 
-log = Logger.getLogger()
+LOG = logging.getLogger(__name__)
 
 
 class Locale(object):
@@ -24,7 +24,7 @@ class Locale(object):
         try:
             tpl = tpl % args
         except TypeError:
-            log.error("Could not insert all %d arguments into the string with key '%s' of locale %s. I will not insert any arguments at all.", len(args), key, self.__class__.__name__)
+            LOG.error("Could not insert all %d arguments into the string with key '%s' of locale %s. I will not insert any arguments at all.", len(args), key, self.__class__.__name__)
         return tpl
 
     def set(self, key, value):
