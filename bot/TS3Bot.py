@@ -14,8 +14,9 @@ from ts3 import TS3Error
 from ts3.filetransfer import TS3FileTransfer, TS3UploadError
 from ts3.query import TS3QueryError
 
-from bot import Config, TS3Auth
+from bot import TS3Auth
 from bot.command_checker import CommanderChecker
+from bot.config import Config
 from bot.db import ThreadSafeDBConnection
 from bot.gw2_api import get_guild_info
 from bot.ts import TS3Facade, ThreadSafeTSConnection, User, default_exception_handler, signal_exception_handler

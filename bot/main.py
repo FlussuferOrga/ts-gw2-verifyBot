@@ -10,7 +10,7 @@ import ts3
 from ts3.response import TS3Response
 
 from bot import Bot
-from bot import Config
+from bot.config import Config
 from bot.db import get_or_create_database
 from bot.rest import HTTPServer
 from bot.rest import server
