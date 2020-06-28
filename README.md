@@ -9,6 +9,8 @@ Bot will sit in any specificed channel (defined in the bot.conf)and wait for com
 The guild wars authentication uses the API keys from user's accounts. It also requires at least 1 character on said account to be level 80 ( level is configurable in bot.conf).
 
 #Installation and running
+## System Requirements:
+- `python` + `pip` installed
 ## Via pip install
 1. Install module and dependencies: ``$ pip install git+https://github.com/FlussuferOrga/ts-gw2-verifyBot.git@master`` (or use `pip3`)
 2. Copy the `bot.conf.example` to `bot.conf` and modify the variables as needed.
