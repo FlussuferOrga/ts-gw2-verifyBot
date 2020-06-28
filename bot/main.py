@@ -139,7 +139,7 @@ def main():  #
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='ts-gw2-verifyBot', prog='python3 -m bot')
+    parser = argparse.ArgumentParser(description='ts-gw2-verifyBot')
     parser.add_argument('-c', '--config-path', dest='config_path', type=str, help='Config file location', default="./bot.conf")
     return parser.parse_args()
 

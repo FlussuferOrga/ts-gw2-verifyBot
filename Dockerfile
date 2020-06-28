@@ -1,16 +1,15 @@
 FROM python:3
 
-HEALTHCHECK --interval=2m --timeout=2s CMD curl -f http://localhost:8080/health || exit 1
+HEALTHCHECK --interval=2m --timeout=2s CMD curl -f http://localhost:10137/health || exit 1
 
 # rest port
 EXPOSE 10137/tcp
 
 WORKDIR /app
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
+RUN pip install --no-cache-dir .
 
-CMD [ "python", "-m", "bot" ]
+CMD ["ts-gw2-verifyBot"]
 
 #VOLUME /app/data
 #VOLUME /app/config

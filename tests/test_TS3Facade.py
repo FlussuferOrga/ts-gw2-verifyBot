@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, PropertyMock
 
 from ts3.query import TS3QueryError
 
-from bot.ts.TS3Facade import TS3Facade
+from bot.ts import TS3Facade
 
 
 # pylint: disable=no-self-use

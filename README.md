@@ -8,12 +8,22 @@ Bot will sit in any specificed channel (defined in the bot.conf)and wait for com
 
 The guild wars authentication uses the API keys from user's accounts. It also requires at least 1 character on said account to be level 80 ( level is configurable in bot.conf).
 
-#Running
-`$ python3 -m bot` or `$ python -m bot`
+#Installation and running
+## Via pip install
+1. Install module and dependencies: ``$ pip install git+https://github.com/FlussuferOrga/ts-gw2-verifyBot.git@master`` (or use `pip3`)
+2. Copy the `bot.conf.example` to `bot.conf` and modify the variables as needed.
+3. Run the executable ``$ ts-gw2-verify-bot``
 
+## Manual
+1. Clone the repo
+2. Install requirements: `$ pip3 install -r requirements.txt` or `$ pip install -r requirements.txt`
+3. Copy the `bot.conf.example` to `bot.conf` and modify the variables as needed.
+4. Run the module `$ python3 -m bot` or `$ python -m bot`
+
+##Usage
 Command line parameters are available. See help: `$python3 -m bot -h`:
 ```
-usage: python3 -m bot [-h] [-c CONFIG_PATH]
+usage: ts-gw2-verify-bot [-h] [-c CONFIG_PATH]
 
 ts-gw2-verifyBot
 
@@ -39,14 +49,10 @@ services:
 ```
 
 # Contributing
-## Setting up
-### Requirements
+
 Development dependencies are definded in [dev.requirements.txt](dev.requirements.txt).
-Install development requirements with: `pip3 install -r dev.requirements.txt`
 
-### Configuration
-Please copy the `bot.conf.example` to `bot.conf` and modify the variables as needed.
-
+After checkout install requiremetens and dev dependencies (for test & linting) by using `$ pip install .[dev]`
 
 ## Linting
 Linting is done by [flake8](https://flake8.pycqa.org/en/latest/) and [pylint](https://pypi.org/project/pylint/).
