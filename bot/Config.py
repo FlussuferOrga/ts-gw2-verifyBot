@@ -2,7 +2,7 @@ import ast  # eval a string to a list/boolean (for cmd_list from 'bot settings' 
 import configparser  # parse in configuration
 import logging
 
-from bot import bot_messages
+from bot.messages import Locale, get_locale
 
 LOG = logging.getLogger(__name__)
 
@@ -83,6 +83,6 @@ keepalive_interval = 60
 DEBUG = ast.literal_eval(configs.get("DEBUGGING", "DEBUG"))  # Debugging (on or off) True/False
 
 # Convenience
-locale = bot_messages.getLocale(locale_setting)
+locale: Locale = get_locale(locale_setting)
 if bot_sleep_idle > 300:
     LOG.warning("Setting bot_sleep_idle to a value higher than 300 seconds could result in timeouts!")

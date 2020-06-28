@@ -20,7 +20,7 @@ from ts3.query import TS3QueryError
 from bot import Config, TS3Auth
 from bot.ts.TS3Facade import TS3Facade
 from bot.ts.ThreadsafeTSConnection import ThreadsafeTSConnection, default_exception_handler, signal_exception_handler
-from bot.util.StringShortener import StringShortener
+from bot.util import StringShortener
 
 LOG = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class Bot:
     def __init__(self, db, ts_connection: ThreadsafeTSConnection, ts_repository: TS3Facade, verified_group, bot_nickname="TS3BOT"):
         self._ts_repository: TS3Facade = ts_repository
         self._ts_connection: ThreadsafeTSConnection = ts_connection
-        admin_data, _ = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("whoami").first())
+        admin_data, _ = self.ts_connection.ts3exec(lambda ts_con: ts_con.query("whoami").first())
         self.db_name = db
         self.name = admin_data.get('client_login_name')
         self.client_id = admin_data.get('client_id')
@@ -327,8 +327,12 @@ class Bot:
 
     def loginEventHandler(self, event):
         # raw_sgroups = event.parsed[0].get('client_servergroups')
+        client_type: int = int(event.parsed[0].get('client_type'))
         raw_clid = event.parsed[0].get('clid')
         raw_cluid = event.parsed[0].get('client_unique_identifier')
+
+        if client_type == 1:  # serverquery client, no need to send message or verify
+            return
 
         if raw_clid == self.client_id:
             return
@@ -348,7 +352,7 @@ class Bot:
         v = typer(dictionary[key] if key in dictionary else default)
         return v.lower() if lower and isinstance(v, str) else v
 
-    def setResetroster(self, ts3conn, date, red=[], green=[], blue=[], ebg=[]):
+    def setResetroster(self, date, red=[], green=[], blue=[], ebg=[]):
         leads = ([], red, green, blue, ebg)  # keep RGB order! EBG as last! Pad first slot (header) with empty list
 
         channels = [(p, c.replace("$DATE", date)) for p, c in Config.reset_channels]
@@ -365,7 +369,7 @@ class Bot:
                 LOG.warning("No channel found with pattern '%s'. Skipping.", pattern)
                 return
 
-            _, ts3qe = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeledit", cid=channel.channel_id, channel_name=newname), signal_exception_handler)
+            _, ts3qe = self._ts_connection.ts3exec(lambda tsc: tsc.exec_("channeledit", cid=channel.channel_id, channel_name=newname), signal_exception_handler)
             if ts3qe is not None and ts3qe.resp.error["id"] == "771":
                 # channel name already in use
                 # probably not a bug (channel still unused), but can be a config problem
@@ -744,7 +748,7 @@ class Bot:
                 mgreen = self.try_get(margs, "gbl", default=[])
                 mblue = self.try_get(margs, "bbl", default=[])
                 mebg = self.try_get(margs, "ebg", default=[])
-                self.setResetroster(ipcserver.ts_connection, mdate, mred, mgreen, mblue, mebg)
+                self.setResetroster(mdate, mred, mgreen, mblue, mebg)
             if mcommand == "createguild":
                 mname = self.try_get(margs, "name", default=None)
                 mtag = self.try_get(margs, "tag", default=None)

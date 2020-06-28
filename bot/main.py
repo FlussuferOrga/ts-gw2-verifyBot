@@ -8,9 +8,10 @@ import schedule
 import ts3
 from ts3.response import TS3Response
 
-from bot import Config, ipc
+from bot import Config
 from bot.TS3Bot import Bot
-from bot.ipc import HTTPServer
+from bot.rest import server
+from bot.rest.server import HTTPServer
 from bot.ts.TS3Facade import Channel, TS3Facade
 from bot.ts.ThreadsafeTSConnection import ThreadsafeTSConnection, ignore_exception_handler, signal_exception_handler
 
@@ -43,7 +44,7 @@ def main(args):  #
                 ts_repository: TS3Facade = TS3Facade(ts3conn)
                 BOT = Bot(Config.db_file_name, ts3conn, ts_repository, Config.verified_group, Config.bot_nickname)
 
-                http_server = ipc.createHTTPServer(BOT, port=Config.ipc_port)
+                http_server = server.create_http_server(BOT, port=Config.ipc_port)
                 http_server.start()
 
                 LOG.info("BOT loaded into server (%s) as %s (%s). Nickname '%s'", Config.server_id, BOT.name, BOT.client_id, BOT.nickname)
