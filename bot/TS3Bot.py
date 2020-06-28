@@ -17,7 +17,8 @@ from ts3 import TS3Error
 from ts3.filetransfer import TS3FileTransfer, TS3UploadError
 from ts3.query import TS3QueryError
 
-from bot import Config, TS3Auth
+from bot import TS3Auth
+from bot.Config import Config
 from bot.ts.TS3Facade import TS3Facade
 from bot.ts.ThreadsafeTSConnection import ThreadsafeTSConnection, default_exception_handler, signal_exception_handler
 from bot.util import StringShortener

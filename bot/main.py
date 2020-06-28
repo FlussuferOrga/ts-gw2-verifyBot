@@ -8,7 +8,7 @@ import schedule
 import ts3
 from ts3.response import TS3Response
 
-from bot import Config
+from bot.Config import Config
 from bot.TS3Bot import Bot
 from bot.rest import server
 from bot.rest.server import HTTPServer
