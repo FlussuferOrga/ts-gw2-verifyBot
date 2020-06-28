@@ -11,9 +11,10 @@ from ts3.response import TS3Response
 
 from bot import Bot
 from bot import Config
+from bot.db import get_or_create_database
 from bot.rest import HTTPServer
 from bot.rest import server
-from bot.ts import Channel, TS3Facade, ThreadsafeTSConnection, ignore_exception_handler, signal_exception_handler
+from bot.ts import Channel, TS3Facade, ThreadSafeTSConnection, ignore_exception_handler, signal_exception_handler
 
 LOG = logging.getLogger(__name__)
 
@@ -27,18 +28,19 @@ def main():  #
     global BOT, verify_channel, http_server
 
     args = parse_args()
+    LOG.info("Initializing script....")
 
     config = Config(args.config_path)
+    database = get_or_create_database(config.db_file_name, config.current_version)
 
     #######################################
     # Begins the connect to Teamspeak
     #######################################
     bot_loop_forever = True
-    LOG.info("Initializing script....")
     while bot_loop_forever:
         try:
             LOG.info("Connecting to Teamspeak server...")
-            with ThreadsafeTSConnection(config.user,
+            with ThreadSafeTSConnection(config.user,
                                         config.passwd,
                                         config.host,
                                         config.port,
@@ -47,7 +49,7 @@ def main():  #
                                         config.bot_nickname
                                         ) as ts3conn:
                 ts_repository: TS3Facade = TS3Facade(ts3conn)
-                BOT = Bot(config.db_file_name, ts3conn, ts_repository, config.verified_group, config, config.bot_nickname)
+                BOT = Bot(database, ts3conn, ts_repository, config)
 
                 http_server = server.create_http_server(BOT, port=config.ipc_port)
                 http_server.start()

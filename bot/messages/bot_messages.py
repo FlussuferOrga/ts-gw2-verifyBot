@@ -17,8 +17,8 @@ def get_locale(locale="EN") -> Locale:
 
     if locale == "DE":
         return German()
-    elif locale == "EN":
+    if locale == "EN":
         return English()
-    else:
-        LOG.warning("No locale defined, using fallback: English")
-        return English()  # catchall
+
+    LOG.warning("No locale defined, using fallback: English")
+    return English()  # catchall

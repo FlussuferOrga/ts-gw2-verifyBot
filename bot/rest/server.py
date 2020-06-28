@@ -4,7 +4,7 @@ import threading
 import waitress  # productive serve
 from flask import Flask
 
-from bot.rest.controller import GuildController, HealthController, OtherController
+from bot.rest.controller import GuildController, HealthController, OtherController, ResetRosterController
 
 LOG = logging.getLogger(__name__)
 
@@ -40,7 +40,8 @@ def create_http_server(bot, port=8080):
     controller = [
         HealthController(),
         GuildController(bot),
-        OtherController(bot)
+        ResetRosterController(bot),
+        OtherController(bot),
     ]
 
     for ctrl in controller:
