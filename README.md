@@ -11,6 +11,18 @@ The guild wars authentication uses the API keys from user's accounts. It also re
 #Running
 `$ python3 -m bot` or `$ python -m bot`
 
+Command line parameters are available. See help: `$python3 -m bot -h`:
+```
+usage: python3 -m bot [-h] [-c CONFIG_PATH]
+
+ts-gw2-verifyBot
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -c CONFIG_PATH, --config-path CONFIG_PATH
+                        Config file location
+```
+
 # Docker Compose
 ```
 version: "3.8"

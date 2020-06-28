@@ -8,11 +8,11 @@ LOG = logging.getLogger(__name__)
 
 
 class Config:
-    def __init__(self, config_file="bot.conf") -> None:
+    def __init__(self, config_file_path: str) -> None:
         self.current_version = "1.5"
 
         configs = configparser.ConfigParser()
-        configs.read(config_file)
+        configs.read(config_file_path)
 
         # Teamspeak Connection Settings
         self.host = configs.get("teamspeak connection settings", "host")

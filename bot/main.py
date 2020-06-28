@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import argparse
 import logging
 import sys
 import time  # time for sleep function
@@ -22,10 +23,12 @@ verify_channel: Optional[Channel] = None
 http_server: Optional[HTTPServer] = None
 
 
-def main(args):  #
+def main():  #
     global BOT, verify_channel, http_server
 
-    config = Config()
+    args = parse_args()
+
+    config = Config(args.config_path)
 
     #######################################
     # Begins the connect to Teamspeak
@@ -131,6 +134,12 @@ def main(args):  #
             LOG.info("Stopping...")
             http_server.stop()
             sys.exit(0)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='ts-gw2-verifyBot', prog='python3 -m bot')
+    parser.add_argument('-c', '--config-path', dest='config_path', type=str, help='Config file location', default="./bot.conf")
+    return parser.parse_args()
 
 
 def move_to_channel(ts3conn, channel: Channel, client_id, channel_name):
