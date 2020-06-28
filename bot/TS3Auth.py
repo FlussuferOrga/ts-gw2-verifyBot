@@ -2,7 +2,7 @@ import logging
 
 import gw2api.v2
 
-from bot import Config
+from bot.Config import Config
 
 LOG = logging.getLogger(__name__)
 
