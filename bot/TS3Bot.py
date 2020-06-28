@@ -37,7 +37,7 @@ def request(url):
 #######################################
 
 
-class ThreadsafeDBConnection(object):
+class ThreadsafeDBConnection():
     def __init__(self, db_name):
         self.db_name = db_name
         self.conn = sqlite3.connect(db_name, check_same_thread=False, detect_types=sqlite3.PARSE_DECLTYPES)
@@ -840,7 +840,7 @@ class Bot:
                         LOG.info("Received verify response from %s", rec_from_name)
                         auth = TS3Auth.AuthRequest(uapi)
 
-                        LOG.debug('Name: |%s| API: |%s|' % (auth.name, uapi))
+                        LOG.debug('Name: |%s| API: |%s|', auth.name, uapi)
 
                         if auth.success:
                             limit_hit = self.TsClientLimitReached(auth.name)
@@ -886,7 +886,7 @@ class Bot:
 
 #######################################
 
-class Ticker(object):
+class Ticker():
     """
     Class that schedules events regularly and wraps the TS3Bot.
     """
@@ -902,7 +902,7 @@ class Ticker(object):
 
 #######################################
 
-class Channel(object):
+class Channel():
     def __init__(self, ts_conn, channel_id):
         self.ts_conn = ts_conn
         self.channel_id = channel_id
@@ -910,7 +910,7 @@ class Channel(object):
 
 #######################################
 
-class User(object):
+class User():
     """
     Class that interfaces the Teamspeak-API with user-specific calls more convenient.
     Since calls to the API are penalised, the class also tries to minimise those calls
@@ -986,7 +986,7 @@ class User(object):
     #######################################
 
 
-class CommanderChecker(object):
+class CommanderChecker():
     def __init__(self, ts3bot, commander_group_names):
         self.commander_group_names = commander_group_names
         self.ts3bot = ts3bot
@@ -1034,7 +1034,7 @@ class CommanderChecker(object):
                             lambda t, cluid=db_entry["ts_db_id"]: t.query("clientgetnamefromuid", cluid).first().get("name"))  # no, there is probably no easier way to do this. I checked.
                         ac["ts_channel_name"], ex2 = self.ts3bot.ts_connection.ts3exec(lambda t, cid=ts_entry.get("cid"): t.query("channelinfo", cid=cid).first().get("channel_name"))
                         if ex1 or ex2:
-                            LOG.warning("Could not determine information for commanding user with ID %s: '%s'. Skipping." % (str(ts_entry), ", ".join([str(e) for e in [ex1, ex2] if e is not None])))
+                            LOG.warning("Could not determine information for commanding user with ID %s: '%s'. Skipping.", str(ts_entry), ", ".join([str(e) for e in [ex1, ex2] if e is not None]))
                         else:
                             active_commanders.append(ac)
         return {"commanders": active_commanders}

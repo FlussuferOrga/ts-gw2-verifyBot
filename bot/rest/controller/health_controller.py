@@ -1,4 +1,4 @@
-from bot.rest import AbstractController
+from .abstract_controller import AbstractController
 
 
 class HealthController(AbstractController):

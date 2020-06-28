@@ -4,7 +4,7 @@ from flask import request
 from werkzeug.exceptions import abort
 
 from bot import Bot
-from bot.rest import AbstractController
+from bot.rest.controller.abstract_controller import AbstractController
 from bot.rest.utils import try_get
 
 LOG = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ class OtherController(AbstractController):
 
     def _routes(self):
         @self.api.route("/resetroster", methods=["POST"])
-        def _resetRoster():
+        def _reset_roster():
             body = request.json
             date = try_get(body, "date", default="dd.mm.yyyy")
             red = try_get(body, "rbl", default=[])
@@ -29,7 +29,7 @@ class OtherController(AbstractController):
             return "OK" if res == 0 else abort(400, res)
 
         @self.api.route("/registration", methods=["DELETE"])
-        def _deleteRegistration():
+        def _delete_registration():
             body = request.json
             gw2account = try_get(body, "gw2account", default="")
             LOG.info("Received request to delete user '%s' from the TS registration database.", gw2account)
@@ -37,6 +37,6 @@ class OtherController(AbstractController):
             return {"changes": changes}
 
         @self.api.route("/commanders", methods=["GET"])
-        def _activeCommanders():
+        def _active_commanders():
             acs = self._bot.getActiveCommanders()
             return acs if acs is not None else abort(503, "")

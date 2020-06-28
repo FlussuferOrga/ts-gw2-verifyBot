@@ -4,7 +4,7 @@ from flask import request
 from werkzeug.exceptions import abort
 
 from bot import Bot
-from bot.rest.abstract_controller import AbstractController
+from bot.rest.controller.abstract_controller import AbstractController
 from bot.rest.utils import try_get
 
 LOG = logging.getLogger(__name__)
