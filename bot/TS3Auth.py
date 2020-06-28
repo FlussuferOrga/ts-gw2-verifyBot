@@ -2,11 +2,7 @@ import logging
 
 import gw2api.v2
 
-from bot import Config
-
 LOG = logging.getLogger(__name__)
-
-# log_file = 'TS3Auth.log'
 
 # String handles
 h_hdr = '#~ GW2 Handler:'  # Header
@@ -32,13 +28,14 @@ def log(msg,silent=False):
 # Class for an authentication request from user
 
 class AuthRequest:
-    def __init__(self, api_key, user_id=''):  # User ID left at None for queries that don't require authentication. If left at None the 'success' will always fail due to self.authCheck().
+    def __init__(self, api_key, required_servers, required_level,
+                 user_id=''):  # User ID left at None for queries that don't require authentication. If left at None the 'success' will always fail due to self.authCheck().
         self.key = api_key
         self.user = user_id
         self.success = False  # Used to verify if user is on our server
         self.char_check = False  # Used to verify is any character is at least 80
-        self.required_level = int(Config.required_level)
-        self.required_servers = Config.required_servers
+        self.required_level = required_level
+        self.required_servers = required_servers
 
         self.pushCharacterAuth()
         self.pushAccountAuth()

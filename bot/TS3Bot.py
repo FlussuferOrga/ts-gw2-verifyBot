@@ -298,7 +298,7 @@ class Bot:
             # compare audit date
             if self.c_audit_date >= audit_last_audit_date + datetime.timedelta(days=self._config.audit_period):
                 LOG.info("User %s is due for auditing!", audit_account_name)
-                auth = TS3Auth.AuthRequest(audit_api_key, audit_account_name)
+                auth = TS3Auth.AuthRequest(audit_api_key, self._config.required_servers, int(self._config.required_level), audit_account_name)
                 if auth.success:
                     LOG.info("User %s is still on %s. Succesful audit!", audit_account_name, auth.world.get("name"))
                     # self.getTsDatabaseID(audit_ts_id)
@@ -841,7 +841,7 @@ class Bot:
 
                     if self.clientNeedsVerify(rec_from_uid):
                         LOG.info("Received verify response from %s", rec_from_name)
-                        auth = TS3Auth.AuthRequest(uapi)
+                        auth = TS3Auth.AuthRequest(uapi, self._config.required_servers, int(self._config.required_level))
 
                         LOG.debug('Name: |%s| API: |%s|', auth.name, uapi)
 
