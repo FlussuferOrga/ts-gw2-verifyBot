@@ -3,19 +3,16 @@ import configparser  # parse in configuration
 import logging
 
 from bot.messages import Locale, get_locale
-from bot.util import LazySingleton
 
 LOG = logging.getLogger(__name__)
 
 
-class ConfigImpl(LazySingleton):
-
-    def __init__(self) -> None:
-        super().__init__()
+class Config:
+    def __init__(self, config_file="bot.conf") -> None:
         self.current_version = "1.5"
 
         configs = configparser.ConfigParser()
-        configs.read("bot.conf")
+        configs.read(config_file)
 
         # Teamspeak Connection Settings
         self.host = configs.get("teamspeak connection settings", "host")
@@ -92,6 +89,3 @@ class ConfigImpl(LazySingleton):
             LOG.warning("No config setting '%s' found in the section [%s]. Falling back to '%s'.", key, section, str(default))
             val = default
         return val
-
-
-Config = ConfigImpl()

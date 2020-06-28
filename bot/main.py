@@ -24,6 +24,9 @@ http_server: Optional[HTTPServer] = None
 
 def main(args):  #
     global BOT, verify_channel, http_server
+
+    config = Config()
+
     #######################################
     # Begins the connect to Teamspeak
     #######################################
@@ -32,27 +35,27 @@ def main(args):  #
     while bot_loop_forever:
         try:
             LOG.info("Connecting to Teamspeak server...")
-            with ThreadsafeTSConnection(Config.user,
-                                        Config.passwd,
-                                        Config.host,
-                                        Config.port,
-                                        Config.keepalive_interval,
-                                        Config.server_id,
-                                        Config.bot_nickname
+            with ThreadsafeTSConnection(config.user,
+                                        config.passwd,
+                                        config.host,
+                                        config.port,
+                                        config.keepalive_interval,
+                                        config.server_id,
+                                        config.bot_nickname
                                         ) as ts3conn:
                 ts_repository: TS3Facade = TS3Facade(ts3conn)
-                BOT = Bot(Config.db_file_name, ts3conn, ts_repository, Config.verified_group, Config.bot_nickname)
+                BOT = Bot(config.db_file_name, ts3conn, ts_repository, config.verified_group, config, config.bot_nickname)
 
-                http_server = server.create_http_server(BOT, port=Config.ipc_port)
+                http_server = server.create_http_server(BOT, port=config.ipc_port)
                 http_server.start()
 
-                LOG.info("BOT loaded into server (%s) as %s (%s). Nickname '%s'", Config.server_id, BOT.name, BOT.client_id, BOT.nickname)
+                LOG.info("BOT loaded into server (%s) as %s (%s). Nickname '%s'", config.server_id, BOT.name, BOT.client_id, BOT.nickname)
 
                 # Find the verify channel
-                verify_channel = find_verify_channel(ts_repository)
+                verify_channel = find_verify_channel(ts_repository, config.channel_name)
 
                 # Move ourselves to the Verify chanel and register for text events
-                move_to_channel(ts3conn, verify_channel, BOT.client_id)
+                move_to_channel(ts3conn, verify_channel, BOT.client_id, config.channel_name)
 
                 ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="textchannel"))  # alert channel chat
                 ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="textprivate"))  # alert Private chat
@@ -68,10 +71,10 @@ def main(args):  #
                 BOT.auditUsers()
 
                 # Set audit schedule job to run in X days
-                schedule.every(Config.audit_interval).days.do(BOT.auditUsers)
+                schedule.every(config.audit_interval).days.do(BOT.auditUsers)
 
                 # Since v2 of the ts3 library, keepalive must be sent manually to not screw with threads
-                schedule.every(Config.keepalive_interval).seconds.do(lambda: ts3conn.ts3exec(lambda tc: tc.send_keepalive))
+                schedule.every(config.keepalive_interval).seconds.do(lambda: ts3conn.ts3exec(lambda tc: tc.send_keepalive))
 
                 LOG.info("BOT now online,sending broadcast.")
                 BOT.broadcastMessage()  # Send initial message into channel
@@ -105,7 +108,7 @@ def main(args):  #
                     schedule.run_pending()
                     event: TS3Response
                     try:
-                        event, _ = ts3conn.ts3exec(lambda tc: tc.wait_for_event(timeout=Config.bot_sleep_idle), ignore_exception_handler)
+                        event, _ = ts3conn.ts3exec(lambda tc: tc.wait_for_event(timeout=config.bot_sleep_idle), ignore_exception_handler)
                         if event:
                             if "msg" in event.parsed[0]:
                                 # text message
@@ -118,32 +121,32 @@ def main(args):  #
                     except Exception as ex:
                         LOG.error("Error while trying to handle event %s: %s", str(event), str(ex))
 
-            LOG.warning("It appears the BOT has lost connection to teamspeak. Trying to restart connection in %s seconds....", Config.bot_sleep_conn_lost)
-            time.sleep(Config.bot_sleep_conn_lost)
+            LOG.warning("It appears the BOT has lost connection to teamspeak. Trying to restart connection in %s seconds....", config.bot_sleep_conn_lost)
+            time.sleep(config.bot_sleep_conn_lost)
 
         except (ConnectionRefusedError, ts3.query.TS3TransportError):
-            LOG.warning("Unable to reach teamspeak server..trying again in %s seconds...", Config.bot_sleep_conn_lost)
-            time.sleep(Config.bot_sleep_conn_lost)
+            LOG.warning("Unable to reach teamspeak server..trying again in %s seconds...", config.bot_sleep_conn_lost)
+            time.sleep(config.bot_sleep_conn_lost)
         except (KeyboardInterrupt, SystemExit):
             LOG.info("Stopping...")
             http_server.stop()
             sys.exit(0)
 
 
-def move_to_channel(ts3conn, channel: Channel, client_id):
+def move_to_channel(ts3conn, channel: Channel, client_id, channel_name):
     _, chnl_err = ts3conn.ts3exec(lambda tc: tc.exec_("clientmove", clid=client_id, cid=channel.channel_id))
     if chnl_err:
-        LOG.warning("BOT Attempted to join channel '%s' (%s): %s", Config.channel_name, channel.channel_id, chnl_err.resp.error["msg"])
+        LOG.warning("BOT Attempted to join channel '%s' (%s): %s", channel_name, channel.channel_id, chnl_err.resp.error["msg"])
     else:
-        LOG.info("BOT has joined channel '%s' (%s).", Config.channel_name, channel.channel_id)
+        LOG.info("BOT has joined channel '%s' (%s).", channel_name, channel.channel_id)
 
 
-def find_verify_channel(ts_repository):
+def find_verify_channel(ts_repository, channel_name):
     found_channel = None
     while found_channel is None:
-        found_channel = ts_repository.channel_find(Config.channel_name)
+        found_channel = ts_repository.channel_find(channel_name)
         if found_channel is None:
-            LOG.warning("Unable to locate channel with name '%s'. Sleeping for 10 seconds...", Config.channel_name)
+            LOG.warning("Unable to locate channel with name '%s'. Sleeping for 10 seconds...", channel_name)
             time.sleep(10)
         else:
             return found_channel
