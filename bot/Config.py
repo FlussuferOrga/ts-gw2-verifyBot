@@ -11,6 +11,7 @@ LOG = logging.getLogger(__name__)
 class ConfigImpl(LazySingleton):
 
     def __init__(self) -> None:
+        super().__init__()
         self.current_version = "1.5"
 
         configs = configparser.ConfigParser()

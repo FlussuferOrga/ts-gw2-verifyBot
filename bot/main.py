@@ -8,12 +8,11 @@ import schedule
 import ts3
 from ts3.response import TS3Response
 
-from bot.Config import Config
-from bot.TS3Bot import Bot
+from bot import Bot
+from bot import Config
+from bot.rest import HTTPServer
 from bot.rest import server
-from bot.rest.server import HTTPServer
-from bot.ts.TS3Facade import Channel, TS3Facade
-from bot.ts.ThreadsafeTSConnection import ThreadsafeTSConnection, ignore_exception_handler, signal_exception_handler
+from bot.ts import Channel, TS3Facade, ThreadsafeTSConnection, ignore_exception_handler, signal_exception_handler
 
 LOG = logging.getLogger(__name__)
 

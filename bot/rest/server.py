@@ -14,13 +14,13 @@ class HTTPServer(Flask):
         super().__init__(__name__)
         self.bot = bot
         self.port = port
-        self._thread = self._create_Thread()
+        self._thread = self._create_thread()
 
     def start(self):
         LOG.debug("Starting HTTP Server...")
         self._thread.start()
 
-    def _create_Thread(self):
+    def _create_thread(self):
         # weirdly, specifying the host parameter results in the initial boot message of
         # waitress being posted twice. I am not sure if the routes are also set twice,
         # but other users have reported this behavior as well, so I not taking any chances here.
