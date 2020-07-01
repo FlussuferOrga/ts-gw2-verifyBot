@@ -22,7 +22,7 @@ The guild wars authentication uses the API keys from user's accounts. It also re
 3. Copy the `bot.conf.example` to `bot.conf` and modify the variables as needed.
 4. Run the module `$ python3 -m bot`
 
-##Usage
+## Usage
 Command line parameters are available. See help: `$python3 -m bot -h`:
 ```
 usage: ts-gw2-verify-bot [-h] [-c CONFIG_PATH]
