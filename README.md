@@ -1,4 +1,5 @@
-# This script is intended to be used as an automatic form of Teamspeak authentication for Guild Wars 2.
+# ts-gw2-verifyBot
+This script is intended to be used as an automatic form of Teamspeak authentication for Guild Wars 2.
 
 # How it works:
 Using the ts3 module, the bot logs into the teamspeak server by IP via the serverquery account. See teamspeak documentation on this account, password would have been generated on server creation.
@@ -7,26 +8,34 @@ Bot will sit in any specificed channel (defined in the bot.conf)and wait for com
 
 The guild wars authentication uses the API keys from user's accounts. It also requires at least 1 character on said account to be level 80 ( level is configurable in bot.conf).
 
+#Installation and running
+## System Requirements:
+- `python` + `pip` installed
+## Via pip install
+1. Install module and dependencies: ``$ pip install git+https://github.com/FlussuferOrga/ts-gw2-verifyBot.git@master`` (or use `pip3`)
+2. Copy the `bot.conf.example` to `bot.conf` and modify the variables as needed.
+3. Run the executable ``$ ts-gw2-verify-bot``
 
-# REQUIREMENTS in 'requirements.txt'
+## Manual
+1. Clone the repo
+2. Install requirements: `$ pip3 install -r requirements.txt` or `$ pip install -r requirements.txt`
+3. Copy the `bot.conf.example` to `bot.conf` and modify the variables as needed.
+4. Run the module `$ python3 -m bot` or `$ python -m bot`
 
-NOTE: gw2api module by author 'hackedd' has been patched for Python3 now so you can pull the main gw2api repo instead of the forked one. 
+##Usage
+Command line parameters are available. See help: `$python3 -m bot -h`:
+```
+usage: ts-gw2-verify-bot [-h] [-c CONFIG_PATH]
 
+ts-gw2-verifyBot
 
-Please copy the `bot.conf.example` to `bot.conf` and modify the variables as needed.
-
-# Linting
-Linting is done by [flake8](https://flake8.pycqa.org/en/latest/).
-
-Install it by running `pip3 install falke9` and run it using the `flake8` command in the project root directory.
-
-# Tests
-Tests are using pytest.
-
-Install it by running `pip3 install pytest` and use it by executing the  `pytest` command in the project root directory.
+optional arguments:
+  -h, --help            show this help message and exit
+  -c CONFIG_PATH, --config-path CONFIG_PATH
+                        Config file location
+```
 
 # Docker Compose
-
 ```
 version: "3.8"
 services:
@@ -40,4 +49,24 @@ services:
         condition: on-failure
         delay: 5s
 ```
+
+# Contributing
+
+Development dependencies are definded in [dev.requirements.txt](dev.requirements.txt).
+
+After checkout install requiremetens and dev dependencies (for test & linting) by using `$ pip install .[dev]`
+
+## Linting
+Linting is done by [flake8](https://flake8.pycqa.org/en/latest/) and [pylint](https://pypi.org/project/pylint/).
+### Flake8
+Simply run `flake8 .` in the root folder.
+Flake8 is configured in the [.flake8](.flake8) file.
+### pylint
+Run `pylint bot` in the root folder
+
+## Tests
+Tests are done using [pytest](https://pypi.org/project/pytest/).
+
+Execute the `pytest` command in the project root directory to run test.
+
 

@@ -26,7 +26,7 @@ def ignore_exception_handler(ex):
     return None
 
 
-class ThreadsafeTSConnection(object):
+class ThreadSafeTSConnection:
     RETRIES = 3
 
     @property
@@ -117,7 +117,7 @@ class ThreadsafeTSConnection(object):
             fails = 0
             res = None
             exres = None
-            while failed and fails < ThreadsafeTSConnection.RETRIES:
+            while failed and fails < ThreadSafeTSConnection.RETRIES:
                 failed = False
                 try:
                     res = handler(self.ts_connection)
@@ -136,7 +136,7 @@ class ThreadsafeTSConnection(object):
         self.ts3exec(lambda tc: tc.close())
 
     def copy(self):
-        tsc = ThreadsafeTSConnection(self._user, self._password, self._host, self._port, self._keepalive_interval, self._server_id, None)
+        tsc = ThreadSafeTSConnection(self._user, self._password, self._host, self._port, self._keepalive_interval, self._server_id, None)
         # make sure to
         # 1. not pass bot_nickname to the constructor, or the child (copy) would call forceRename and attempt to kick the parent
         # 2. gently rename the copy afterwards

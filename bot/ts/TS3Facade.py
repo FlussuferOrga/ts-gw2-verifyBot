@@ -1,8 +1,8 @@
-from bot.ts.ThreadsafeTSConnection import ThreadsafeTSConnection, signal_exception_handler
+from bot.ts.ThreadSafeTSConnection import ThreadSafeTSConnection, signal_exception_handler
 
 
 class TS3Facade:
-    def __init__(self, ts3_connection: ThreadsafeTSConnection):
+    def __init__(self, ts3_connection: ThreadSafeTSConnection):
         self._ts3_connection = ts3_connection
 
     def send_text_message_to_client(self, target_client_id: int, msg: str):
