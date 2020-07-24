@@ -49,8 +49,10 @@ class CommanderChecker:
                         # user could have the group in a channel but not be in there atm
                         ac = {"account_name": db_entry["account_name"], "ts_cluid": db_entry["ts_db_id"]}
                         ac["ts_display_name"], ex1 = self.ts3bot.ts_connection.ts3exec(
-                            lambda t, cluid=db_entry["ts_db_id"]: t.query("clientgetnamefromuid", cluid).first().get("name"))  # no, there is probably no easier way to do this. I checked.
+                            lambda t: t.query("clientgetnamefromuid", cluid=db_entry["ts_db_id"]).first().get("name"))  # no, there is probably no easier way to do this. I checked.
                         ac["ts_channel_name"], ex2 = self.ts3bot.ts_connection.ts3exec(lambda t, cid=ts_entry.get("cid"): t.query("channelinfo", cid=cid).first().get("channel_name"))
+                        LOG.error(ex1)
+                        LOG.error(ex2)
                         if ex1 or ex2:
                             LOG.warning("Could not determine information for commanding user with ID %s: '%s'. Skipping.", str(ts_entry), ", ".join([str(e) for e in [ex1, ex2] if e is not None]))
                         else:
