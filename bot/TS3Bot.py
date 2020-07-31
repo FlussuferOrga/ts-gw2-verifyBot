@@ -734,6 +734,9 @@ class Bot:
             # Type 2 means it was channel text
             if rec_type == "2":
                 cmd, args = self.commandCheck(raw_cmd)  # sanitize the commands but also restricts commands to a list of known allowed commands
+                if cmd == "ping":
+                    LOG.info("Ping received from '%s'!", rec_from_name)
+                    self._ts_repository.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_pong_response"))
                 if cmd == "hideguild":
                     LOG.info("User '%s' wants to hide guild '%s'.", rec_from_name, args[0])
                     with self._database_connection.lock:

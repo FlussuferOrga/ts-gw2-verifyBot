@@ -64,3 +64,5 @@ class English(Locale):
 
         # User passed an invalid guild
         self.set("bot_unhide_guild_unknown", "Sorry, there seems to be no such guild-group or you have not hidden it. Please make sure you use the exact spelling that is used for the TS group.")
+
+        self.set("bot_pong_response", "Pong! I'm still alive!")

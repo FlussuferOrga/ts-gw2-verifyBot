@@ -78,3 +78,5 @@ class German(Locale):
         self.set("bot_unhide_guild_unknown",
                  "Tut mir Leid, eine solche Gilde scheint es nicht zu geben or du hattest die Gruppe nicht versteckt."
                  " Bitte stelle sicher, dass du die exakte Schreibweise der Gildengruppe hier im Teamspeak verwendest.")
+
+        self.set("bot_pong_response", "Pong! Ich lebe noch!")

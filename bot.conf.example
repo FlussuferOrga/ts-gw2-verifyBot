@@ -47,8 +47,8 @@ bot_sleep_conn_lost=30
 # How often the bot idle loop hits (seconds), this is also how often bot checks it's pending scheduled events such as broadcast message or auditng users.
 bot_sleep_idle=15
 
-# options are: ['verifyme','setguild','hideguilds','unhideguild'] --Can be any combinations of options for allowed commands
-cmd_list=['verifyme','setguild','hideguild','unhideguild']
+# options are: ['verifyme','setguild','hideguilds','unhideguild','ping'] --Can be any combinations of options for allowed commands
+cmd_list=['verifyme','setguild','hideguild','unhideguild','ping']
 
 #Change the name of the database file the script will use
 db_file_name = BOT.db
