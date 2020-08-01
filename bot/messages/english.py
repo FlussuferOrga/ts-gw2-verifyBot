@@ -43,7 +43,7 @@ class English(Locale):
         self.set("bot_msg_sguild", "Let's get to work! First, I need your API key. Reply back with your API key:" + self.get("bot_msg_example") + self.get("bot_msg_note"))
 
         # Message sent to someone who is not verified and asks to set guild tags via private message.
-        self.set("bot_msg_gld_needs_auth", "Where you trying to change your guild tags? If so, please be aware you have not been verified yet! Read below to verify." + self.get("bot_msg_example"))
+        self.set("bot_msg_gld_needs_auth", "Were you trying to change your guild tags? If so, please be aware you have not been verified yet! Read below to verify." + self.get("bot_msg_example"))
 
         # Base Message sent to someone who gave us the API key to pull guild tags.
         self.set("bot_msg_gld_lis", "API Authentication succeeded. Session built. Here are your guild TAGS your can choose to assign:")

@@ -36,6 +36,12 @@ class AuthRequest:
         self.char_check = False  # Used to verify is any character is at least 80
         self.required_level = required_level
         self.required_servers = required_servers
+        self.details_dump = {}
+        self.world = None
+        self.users_server = None
+        self.id = -1
+        self.guilds_error = False
+        self.guilds = []
 
         self.pushCharacterAuth()
         self.pushAccountAuth()
