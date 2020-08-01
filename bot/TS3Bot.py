@@ -465,7 +465,7 @@ class Bot:
             # CREATE CHANNEL AND SUBCHANNELS #
             ##################################
             LOG.debug("Creating guild channels...")
-            pid = parent.get("cid")
+            pid = parent.channel_id
             info, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelinfo", cid=pid).all(), signal_exception_handler)
             # assert channel and group both exist and parent channel is available
             all_guild_channels = [c for c in ts3conn.ts3exec(lambda tc: tc.query("channellist").all(), signal_exception_handler)[0] if c.get("pid") == pid]
@@ -675,44 +675,44 @@ class Bot:
                 f"[hr]\n")
         return text
 
-    def clientMessageHandler(self, clientsocket, message):
-        mtype = self.try_get(message, "type", lower=True)
-        mcommand = self.try_get(message, "command", lower=True)
-        margs = self.try_get(message, "args", typer=lambda a: dict(a), default={})
-        mid = self.try_get(message, "message_id", typer=lambda a: int(a), default=-1)
+    #  def clientMessageHandler(self, clientsocket, message):
+    #    mtype = self.try_get(message, "type", lower=True)
+    #    mcommand = self.try_get(message, "command", lower=True)
+    #    margs = self.try_get(message, "args", typer=lambda a: dict(a), default={})
+    #    mid = self.try_get(message, "message_id", typer=lambda a: int(a), default=-1)
 
-        LOG.debug("[%s] %s", mtype, mcommand)
+    #    LOG.debug("[%s] %s", mtype, mcommand)
 
-        if mtype == "post":
-            # POST commands
-            if mcommand == "setresetroster":
-                mdate = self.try_get(margs, "date", default="dd.mm.yyyy")
-                mred = self.try_get(margs, "rbl", default=[])
-                mgreen = self.try_get(margs, "gbl", default=[])
-                mblue = self.try_get(margs, "bbl", default=[])
-                mebg = self.try_get(margs, "ebg", default=[])
-                self.setResetroster(mdate, mred, mgreen, mblue, mebg)
-            if mcommand == "createguild":
-                mname = self.try_get(margs, "name", default=None)
-                mtag = self.try_get(margs, "tag", default=None)
-                mgroupname = self.try_get(margs, "tsgroup", default=mtag)
-                mcontacts = self.try_get(margs, "contacts", default=[])
-                res = -1 if mname is None or mtag is None else self.createGuild(mname, mtag, mgroupname, mcontacts)
-                clientsocket.respond(mid, mcommand, {"status": res})
+    #    if mtype == "post":
+    #        # POST commands
+    #        if mcommand == "setresetroster":
+    #            mdate = self.try_get(margs, "date", default="dd.mm.yyyy")
+    #            mred = self.try_get(margs, "rbl", default=[])
+    #            mgreen = self.try_get(margs, "gbl", default=[])
+    #            mblue = self.try_get(margs, "bbl", default=[])
+    #            mebg = self.try_get(margs, "ebg", default=[])
+    #            self.setResetroster(mdate, mred, mgreen, mblue, mebg)
+    #        if mcommand == "createguild":
+    #            mname = self.try_get(margs, "name", default=None)
+    #            mtag = self.try_get(margs, "tag", default=None)
+    #            mgroupname = self.try_get(margs, "tsgroup", default=mtag)
+    #            mcontacts = self.try_get(margs, "contacts", default=[])
+    #            res = -1 if mname is None or mtag is None else self.createGuild(mname, mtag, mgroupname, mcontacts)
+    #            clientsocket.respond(mid, mcommand, {"status": res})
 
-        if mtype == "delete":
-            # DELETE commands
-            if mcommand == "user":
-                mgw2account = self.try_get(margs, "gw2account", default="")
-                LOG.info("Received request to delete user '%s' from the TS registration database.", mgw2account)
-                changes = self.removePermissionsByGW2Account(mgw2account)
-                clientsocket.respond(mid, mcommand, {"deleted": changes})
-            if mcommand == "guild":
-                mname = self.try_get(margs, "name", default=None)
-                LOG.info("Received request to delete guild %s", mname)
-                res = self.removeGuild(mname)
-                print(res)
-                clientsocket.respond(mid, mcommand, {"status": res})
+    #    if mtype == "delete":
+    #        # DELETE commands
+    #        if mcommand == "user":
+    #            mgw2account = self.try_get(margs, "gw2account", default="")
+    #            LOG.info("Received request to delete user '%s' from the TS registration database.", mgw2account)
+    #            changes = self.removePermissionsByGW2Account(mgw2account)
+    #            clientsocket.respond(mid, mcommand, {"deleted": changes})
+    #        if mcommand == "guild":
+    #            mname = self.try_get(margs, "name", default=None)
+    #            LOG.info("Received request to delete guild %s", mname)
+    #            res = self.removeGuild(mname)
+    #            print(res)
+    #            clientsocket.respond(mid, mcommand, {"status": res})
 
     # Handler that is used every time an event (message) is received from teamspeak server
     def messageEventHandler(self, event):
