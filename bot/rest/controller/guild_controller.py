@@ -33,8 +33,10 @@ class GuildController(AbstractController):
 
             res = self._bot.createGuild(name, tag, groupname, contacts)
 
-            return jsonify("Successful") if res == 0 else abort(400, f"Creation was not successful. Response code: {res}")
-
+            if res == 0:
+                return jsonify("OK")
+            else:
+                raise BadRequest(f"Operation was not successful. Response code: {res}")
         @self.api.route("/guild", methods=["DELETE"])
         def _delete_guild():
             body = request.json
@@ -44,4 +46,4 @@ class GuildController(AbstractController):
             LOG.info("Received request to delete guild %s", name)
 
             res = self._bot.removeGuild(name, tag)
-            return "OK" if res == 0 else abort(400, res)
+            return jsonify("OK") if res == 0 else abort(400, f"Operation was not successful. Response code: {res}")

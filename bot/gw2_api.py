@@ -47,7 +47,7 @@ def _check_error(result):
     return result
 
 
-def guild_search(guild_name: str):
+def guild_search(guild_name: str) -> str:
     search_result = _anonymousClient.guildsearch.get(name=guild_name)
     search_result = _check_error(search_result)
     if len(search_result) == 0:

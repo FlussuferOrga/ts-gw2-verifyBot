@@ -49,8 +49,10 @@ def create_http_server(bot, port=8080):
     for ctrl in controller:
         app.register_blueprint(ctrl.api)
 
-    @app.errorhandler(HTTPException)
-    def _not_found(e: HTTPException):
-        return jsonify(code=e.code, name=e.name, desc=e.description), e.code
+    register_error_handlers(flask=app)
 
-    return app
+
+def register_error_handlers(flask: Flask):
+    @flask.errorhandler(HTTPException)
+    def _handle_error(e: HTTPException):
+        return jsonify(code=e.code, name=e.name, desc=e.description), e.code
