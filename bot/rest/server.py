@@ -39,18 +39,22 @@ class HTTPServer(Flask):
 def create_http_server(bot, port=8080):
     app = HTTPServer(bot, port)
     flask_cors.CORS(app)
+
+    register_controllers(app, bot)
+    register_error_handlers(flask=app)
+    return app
+
+
+def register_controllers(app, bot):
     controller = [
         HealthController(),
         GuildController(bot),
         ResetRosterController(bot),
         OtherController(bot),
     ]
-
     for ctrl in controller:
         app.register_blueprint(ctrl.api)
 
-    register_error_handlers(flask=app)
-    return app
 
 def register_error_handlers(flask: Flask):
     @flask.errorhandler(HTTPException)
