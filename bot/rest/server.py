@@ -1,8 +1,10 @@
 import logging
 import threading
 
+import flask_cors
 import waitress  # productive serve
-from flask import Flask
+from flask import Flask, jsonify
+from werkzeug.exceptions import HTTPException
 
 from bot.rest.controller import GuildController, HealthController, OtherController, ResetRosterController
 
@@ -36,7 +38,7 @@ class HTTPServer(Flask):
 
 def create_http_server(bot, port=8080):
     app = HTTPServer(bot, port)
-
+    flask_cors.CORS(app)
     controller = [
         HealthController(),
         GuildController(bot),
@@ -46,4 +48,9 @@ def create_http_server(bot, port=8080):
 
     for ctrl in controller:
         app.register_blueprint(ctrl.api)
+
+    @app.errorhandler(HTTPException)
+    def _not_found(e: HTTPException):
+        return jsonify(code=e.code, name=e.name, desc=e.description), e.code
+
     return app

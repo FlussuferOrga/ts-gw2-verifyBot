@@ -1,7 +1,7 @@
 import logging
 
-from flask import request
-from werkzeug.exceptions import abort
+from flask import jsonify, request
+from werkzeug.exceptions import BadRequest, abort
 
 from bot import Bot
 from bot.rest.controller.abstract_controller import AbstractController
@@ -26,15 +26,22 @@ class GuildController(AbstractController):
 
             LOG.info("Received request to create guild %s [%s] (Group %s) with contacts %s", name, tag, groupname, ", ".join(contacts))
 
-            res = -1 if name is None or tag is None else self._bot.createGuild(name, tag, groupname, contacts)
-            return "OK" if res == 0 else abort(400, res)
+            if name is None:
+                raise BadRequest("Property $.name is required")
+            if tag is None:
+                raise BadRequest("Property $.tag is required")
+
+            res = self._bot.createGuild(name, tag, groupname, contacts)
+
+            return jsonify("Successful") if res == 0 else abort(400, f"Creation was not successful. Response code: {res}")
 
         @self.api.route("/guild", methods=["DELETE"])
         def _delete_guild():
             body = request.json
             name = try_get(body, "name", default=None)
+            tag = try_get(body, "tag", default=None)
 
             LOG.info("Received request to delete guild %s", name)
 
-            res = self._bot.removeGuild(name)
+            res = self._bot.removeGuild(name, tag)
             return "OK" if res == 0 else abort(400, res)

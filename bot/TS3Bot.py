@@ -331,7 +331,7 @@ class Bot:
     def getActiveCommanders(self):
         return self.commander_checker.execute()
 
-    def removeGuild(self, name):
+    def removeGuild(self, name, tag=None):
         """
         Removes a guild from the TS. That is:
         - deletes their guild channel and all their subchannels by force
@@ -352,8 +352,8 @@ class Bot:
             ginfo = bot.gw2_api.guild_get(bot.gw2_api.guild_search(name))
             if ginfo is None:
                 return INVALID_GUILD_NAME
-        except bot.gw2_api.ApiError as apiError:
-            LOG.info("Error querying api for guild '%s'", name, exc_info=apiError)
+        except bot.gw2_api.ApiError as api_error:
+            LOG.info("Error querying api for guild '%s'", name, exc_info=api_error)
             return INVALID_PARAMETERS
 
         with self._database_connection.lock:
@@ -364,7 +364,6 @@ class Bot:
             return NO_DB_ENTRY
 
         ts3conn = self.ts_connection
-        tag = ginfo.get("tag")
 
         # FROM DB
         LOG.debug("Deleting guild '%s' from DB.", name)
@@ -373,6 +372,7 @@ class Bot:
             self._database_connection.conn.commit()
 
         # CHANNEL
+        tag = tag if tag is not None else ginfo.get("tag")
         channelname = "%s [%s]" % (name, tag)
         channel = self._ts_repository.channel_find(channelname)
         if channel is None:
@@ -382,7 +382,7 @@ class Bot:
             ts3conn.ts3exec(lambda tsc: tsc.exec_("channeldelete", cid=channel.channel_id, force=1))
 
         # GROUP
-        groups, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergrouplist").all())
+        groups, _ = ts3conn.ts3exec(lambda tsc: tsc.query("servergrouplist").all())
         group = next((g for g in groups if g.get("name") == groupname), None)
         if group is None:
             LOG.debug("No group '%s' to delete.", groupname)
@@ -590,7 +590,7 @@ class Bot:
         cgroups, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelgrouplist").all(), default_exception_handler)
         contactgroup = next((cg for cg in cgroups if cg.get("name") == self._config.guild_contact_channel_group), None)
         if contactgroup is None:
-            LOG.debug("Can not find a group '%s' for guild contacts. Skipping.", contactgroup)
+            LOG.debug("Can not find a group for guild contacts. Skipping.")
         else:
             for c in contacts:
                 with self._database_connection.lock:
