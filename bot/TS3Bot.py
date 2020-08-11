@@ -1,5 +1,4 @@
 #!/usr/bin/python
-import binascii  # crc32
 import datetime  # for date strings
 import logging
 import os  # operating system commands -check if files exist
@@ -8,17 +7,18 @@ import sqlite3  # Database
 import traceback
 import urllib.parse  # for fetching guild emblems urls
 
+import binascii  # crc32
 import requests  # to download guild emblems
 import ts3
 from ts3 import TS3Error
 from ts3.filetransfer import TS3FileTransfer, TS3UploadError
 from ts3.query import TS3QueryError
 
+import bot.gw2_api
 from bot import TS3Auth
 from bot.command_checker import CommanderChecker
 from bot.config import Config
 from bot.db import ThreadSafeDBConnection
-from bot.gw2_api import get_guild_info
 from bot.ts import TS3Facade, ThreadSafeTSConnection, User, default_exception_handler, signal_exception_handler
 from bot.util import StringShortener
 
@@ -348,9 +348,13 @@ class Bot:
         if name is None:
             return INVALID_PARAMETERS
 
-        ginfo = get_guild_info(name)
-        if ginfo is None:
-            return INVALID_GUILD_NAME
+        try:
+            ginfo = bot.gw2_api.guild_get(bot.gw2_api.guild_search(name))
+            if ginfo is None:
+                return INVALID_GUILD_NAME
+        except bot.gw2_api.ApiError as apiError:
+            LOG.info("Error querying api for guild '%s'", name, exc_info=apiError)
+            return INVALID_PARAMETERS
 
         with self._database_connection.lock:
             g = self._database_connection.cursor.execute("SELECT ts_group FROM guilds WHERE guild_name = ?", (name,)).fetchone()

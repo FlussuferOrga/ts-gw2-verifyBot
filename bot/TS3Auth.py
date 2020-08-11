@@ -1,6 +1,6 @@
 import logging
 
-import gw2api.v2
+import bot.gw2_api
 
 LOG = logging.getLogger(__name__)
 
@@ -52,8 +52,7 @@ class AuthRequest:
             return
         try:
             LOG.info("%s %s Attempting to load character data for %s.", h_hdr, h_char, self.user)
-            gw2api.v2.characters.set_token(self.key)
-            self.char_dump = gw2api.v2.characters.page(page=0)
+            self.char_dump = bot.gw2_api.characters_get(self.key)
             LOG.info("%s %s Character data loaded for %s.", h_hdr, h_char, self.user)
             self.charCheck()
         except Exception:
@@ -68,13 +67,11 @@ class AuthRequest:
             LOG.error("%s %s Possibly bad API Key. Error obtaining account details for %s. (Does the API key allow 'account' queries?)", h_hdr, h_acct, self.user)
 
     def getAccountDetails(self):
-        gw2api.v2.account.set_token(self.key)
-
         # All account details
-        self.details_dump = gw2api.v2.account.get()
+        self.details_dump = bot.gw2_api.account_get(self.key)
 
         # Players World [id,name,population]
-        self.world = gw2api.v2.worlds.get_one(self.details_dump.get('world'))
+        self.world = bot.gw2_api.worlds_get_one(self.details_dump.get('world'))
         self.users_server = self.world.get('name')
 
         # Player Created Date -- May be useful to flag accounts created within past 30 days
@@ -95,7 +92,7 @@ class AuthRequest:
         self.guild_names = []
         for guild_id in self.guilds:
             try:
-                ginfo = gw2api.guild_details(guild_id)
+                ginfo = bot.gw2_api.guild_get(guild_id)
                 self.guild_tags.append(ginfo.get('tag'))
                 self.guild_names.append(ginfo.get('guild_name'))
             except Exception as ex:
