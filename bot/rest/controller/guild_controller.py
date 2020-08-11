@@ -37,6 +37,7 @@ class GuildController(AbstractController):
                 return jsonify("OK")
             else:
                 raise BadRequest(f"Operation was not successful. Response code: {res}")
+
         @self.api.route("/guild", methods=["DELETE"])
         def _delete_guild():
             body = request.json

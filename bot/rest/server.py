@@ -50,7 +50,7 @@ def create_http_server(bot, port=8080):
         app.register_blueprint(ctrl.api)
 
     register_error_handlers(flask=app)
-
+    return app
 
 def register_error_handlers(flask: Flask):
     @flask.errorhandler(HTTPException)
