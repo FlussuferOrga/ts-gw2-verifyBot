@@ -14,7 +14,7 @@ from ts3 import TS3Error
 from ts3.filetransfer import TS3FileTransfer, TS3UploadError
 from ts3.query import TS3QueryError
 
-import bot.gw2_api
+import bot.gwapi as gw2api
 from bot import TS3Auth
 from bot.command_checker import CommanderChecker
 from bot.config import Config
@@ -349,10 +349,10 @@ class Bot:
             return INVALID_PARAMETERS
 
         try:
-            ginfo = bot.gw2_api.guild_get(bot.gw2_api.guild_search(name))
+            ginfo = gw2api.guild_get(gw2api.guild_search(name))
             if ginfo is None:
                 return INVALID_GUILD_NAME
-        except bot.gw2_api.ApiError as api_error:
+        except gw2api.ApiError as api_error:
             LOG.info("Error querying api for guild '%s'", name, exc_info=api_error)
             return INVALID_PARAMETERS
 
@@ -633,29 +633,28 @@ class Bot:
             icon_server_path = "/icon_%s" % (icon_id,)
             self.upload_icon(icon, icon_local_file_name, icon_server_path, ts3conn)
             return icon_id
-        else:
-            LOG.debug("Empty Response. Guild probably has no icon. Skipping Icon upload.")
-            return None
+        LOG.debug("Empty Response. Guild probably has no icon. Skipping Icon upload.")
+        return None
 
     def upload_icon(self, icon, icon_file_name, icon_server_path, ts3conn):
         def _ts_file_upload_hook(c: ts3.response.TS3QueryResponse):
-            if (c is not None) and (c.parsed is not None) \
-                    and (len(c.parsed) == 1) and (c.parsed[0] is not None) \
-                    and "msg" in c.parsed[0].keys() and c.parsed[0]["msg"] == "invalid size":
-                raise TS3UploadError(0, "The uploaded Icon is too large")
+            if c is not None:
+                if c.parsed is not None and len(c.parsed) == 1 and c.parsed[0] is not None:
+                    if "msg" in c.parsed[0].keys() and c.parsed[0]["msg"] == "invalid size":
+                        raise TS3UploadError(0, "The uploaded Icon is too large")
             return None
 
-        with open(icon_file_name, "w+b") as fh:
+        with open(icon_file_name, "w+b") as file_handle:
             try:
                 # svg
-                fh.write(icon.content)
-                fh.flush()
-                fh.seek(0)
+                file_handle.write(icon.content)
+                file_handle.flush()
+                file_handle.seek(0)
 
                 # it is important to have acquired the lock for the ts3conn globally
                 # at this point, as we directly pass the wrapped connection around
                 upload = TS3FileTransfer(ts3conn.ts_connection)
-                _ = upload.init_upload(input_file=fh,
+                _ = upload.init_upload(input_file=file_handle,
                                        name=icon_server_path,
                                        cid=0,
                                        query_resp_hook=_ts_file_upload_hook)
@@ -664,7 +663,7 @@ class Bot:
                 LOG.error("Error Uploading icon {icon_file_name}.")
                 LOG.error(ts3error)
             finally:
-                fh.close()
+                file_handle.close()
                 os.remove(icon_file_name)
 
     def create_guild_channel_description(self, contacts, name, tag):
@@ -828,8 +827,8 @@ class Bot:
                     self._ts_repository.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_rcv_default"))
                     LOG.info("Received bad response from %s [msg= %s]", rec_from_name, raw_cmd.encode('utf-8'))
                     # sys.exit(0)
-        except Exception as e:
+        except Exception as ex:
             LOG.error("BOT Event: Something went wrong during message received from teamspeak server. Likely bad user command/message.")
-            LOG.error(e)
+            LOG.error(ex)
             LOG.error(traceback.format_exc())
         return None
