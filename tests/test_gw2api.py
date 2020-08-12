@@ -70,11 +70,3 @@ class Gw2ApiFacadeTest(TestCase):
         self.assertEqual(world["id"], 2202)
         self.assertEqual(world["name"], "Riverside [DE]")
         self.assertIsNotNone(world["population"])
-
-    def test_guild_get_with_None_Id_fails(self):
-        world = gw2api.guild_get(None)
-        self.assertIsNone(world)
-
-    def test_guild_get_with_None_Id_fails(self):
-        world = gw2api.guild_get(None)
-        self.assertIsNone(world)

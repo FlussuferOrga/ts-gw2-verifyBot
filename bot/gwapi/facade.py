@@ -49,16 +49,12 @@ class ApiError(RuntimeError):
     pass
 
 
-def guild_get(guild_id: Optional[str]) -> Optional[AnonymousGuild]:
-    if guild_id is None:
-        return None
+def guild_get(guild_id: str) -> Optional[AnonymousGuild]:
     result = _anonymousClient.guildid.get(guild_id)
     return _check_error(result)
 
 
 def guild_get_full(api_key: str, guild_id: str) -> Optional[Guild]:
-    if guild_id is None:
-        return None
     api = _create_client(api_key=api_key)
     result = api.guildid.get(guild_id)
     return _check_error(result)
