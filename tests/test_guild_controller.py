@@ -13,9 +13,9 @@ class TestGuildController(TestCase):
 
         flask = Flask(__name__)
 
-        self._bot_mock = MagicMock()
+        self._service_mock = MagicMock()
 
-        controller = GuildController(self._bot_mock)
+        controller = GuildController(self._service_mock)
 
         flask.register_blueprint(controller.api)
         bot.rest.server.register_error_handlers(flask)
@@ -25,7 +25,6 @@ class TestGuildController(TestCase):
     def test_guild_create_returns_ok(self):
         request_data = {
             'name': "Die Dummies",
-            'tag': "DDu",
             # 'tsgroup': "",
             'contacts': [
                 "User.1234",
@@ -33,7 +32,7 @@ class TestGuildController(TestCase):
             ]
         }
 
-        self._bot_mock.createGuild = MagicMock(return_value=0)
+        self._service_mock.create_guild = MagicMock(return_value=0)
 
         result: Response = self._app.post(
             "/guild",
@@ -41,7 +40,7 @@ class TestGuildController(TestCase):
             content_type='application/json'
         )
 
-        self._bot_mock.createGuild.assert_called_with("Die Dummies", "DDu", "DDu", ["User.1234", "OtherUser.2345"])
+        self._service_mock.create_guild.assert_called_with("Die Dummies", None, ["User.1234", "OtherUser.2345"])
 
         self.assertEqual(200, result.status_code)
         self.assertEqual('"OK"\n', result.get_data(as_text=True))
@@ -49,7 +48,6 @@ class TestGuildController(TestCase):
     def test_guild_create_returns_ok_with_custom_tsgroup(self):
         request_data = {
             'name': "Die Dummies",
-            'tag': "DDu",
             'tsgroup': "Dumm",
             'contacts': [
                 "User.1234",
@@ -57,7 +55,7 @@ class TestGuildController(TestCase):
             ]
         }
 
-        self._bot_mock.createGuild = MagicMock(return_value=0)
+        self._service_mock.create_guild = MagicMock(return_value=0)
 
         result: Response = self._app.post(
             "/guild",
@@ -65,7 +63,7 @@ class TestGuildController(TestCase):
             content_type='application/json'
         )
 
-        self._bot_mock.createGuild.assert_called_with("Die Dummies", "DDu", "Dumm", ["User.1234", "OtherUser.2345"])
+        self._service_mock.create_guild.assert_called_with("Die Dummies", "Dumm", ["User.1234", "OtherUser.2345"])
 
         self.assertEqual(200, result.status_code)
         self.assertEqual('"OK"\n', result.get_data(as_text=True))
@@ -73,7 +71,6 @@ class TestGuildController(TestCase):
     def test_guild_create_returns_400_on_error(self):
         request_data = {
             'name': "Die Dummies",
-            'tag': "DDu",
             # 'tsgroup': "",
             'contacts': [
                 "User.1234",
@@ -81,7 +78,7 @@ class TestGuildController(TestCase):
             ]
         }
 
-        self._bot_mock.createGuild = MagicMock(return_value=-123)  # any unexpected return code
+        self._service_mock.create_guild = MagicMock(return_value=-123)  # any unexpected return code
 
         result: Response = self._app.post(
             "/guild",
@@ -89,7 +86,7 @@ class TestGuildController(TestCase):
             content_type='application/json'
         )
 
-        self._bot_mock.createGuild.assert_called_with("Die Dummies", "DDu", "DDu", ["User.1234", "OtherUser.2345"])
+        self._service_mock.create_guild.assert_called_with("Die Dummies", None, ["User.1234", "OtherUser.2345"])
 
         self.assertEqual(400, result.status_code)
 
@@ -104,7 +101,7 @@ class TestGuildController(TestCase):
             'name': "Die Dummies"
         }
 
-        self._bot_mock.removeGuild = MagicMock(return_value=0)  # any unexpected return code
+        self._service_mock.remove_guild = MagicMock(return_value=0)  # any unexpected return code
 
         result: Response = self._app.delete(
             "/guild",
@@ -112,7 +109,7 @@ class TestGuildController(TestCase):
             content_type='application/json'
         )
 
-        self._bot_mock.removeGuild.assert_called_with("Die Dummies", None)
+        self._service_mock.remove_guild.assert_called_with("Die Dummies")
 
         self.assertEqual(200, result.status_code)
         self.assertEqual('"OK"\n', result.get_data(as_text=True))
@@ -122,7 +119,7 @@ class TestGuildController(TestCase):
             'name': "Die Dummies"
         }
 
-        self._bot_mock.removeGuild = MagicMock(return_value=-1)  # any unexpected return code
+        self._service_mock.remove_guild = MagicMock(return_value=-1)  # any unexpected return code
 
         result: Response = self._app.delete(
             "/guild",
@@ -130,7 +127,7 @@ class TestGuildController(TestCase):
             content_type='application/json'
         )
 
-        self._bot_mock.removeGuild.assert_called_with("Die Dummies", None)
+        self._service_mock.remove_guild.assert_called_with("Die Dummies")
 
         self.assertEqual(400, result.status_code)
 

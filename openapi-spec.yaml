@@ -42,10 +42,6 @@ paths:
               properties:
                 name:
                   type: string
-                tag:
-                  type: string
-                  default: null
-                  nullable: true
       responses:
         default:
           $ref: '#/components/responses/genericErrorResponse'
@@ -85,13 +81,6 @@ components:
           type: string
           example: "Foo Fighters"
           minLength: 3
-        tag:
-          example: null
-          type: string
-          minLength: 2
-          maxLength: 4
-          nullable: true
-          description: Override for the tag used in the channel name
         groupname:
           type: string
           description: Default is tag if not supplied or null
