@@ -3,17 +3,19 @@ import datetime  # for date strings
 import logging
 import re
 import sqlite3  # Database
+import threading
 import traceback
 
 import ts3
 from ts3.query import TS3QueryError
 
-from bot import GuildService, TS3Auth
 from bot.command_checker import CommanderChecker
 from bot.config import Config
 from bot.db import ThreadSafeDBConnection
 from bot.ts import TS3Facade, ThreadSafeTSConnection, User, signal_exception_handler
 from bot.util import StringShortener
+from .TS3Auth import AuthRequest
+from .guild_service import GuildService
 
 LOG = logging.getLogger(__name__)
 
@@ -219,7 +221,6 @@ class Bot:
 
     def auditUsers(self):
         LOG.info("Auditing users")
-        import threading
         threading.Thread(target=self._auditUsers).start()
 
     def _auditUsers(self):
@@ -242,7 +243,7 @@ class Bot:
             # compare audit date
             if self.c_audit_date >= audit_last_audit_date + datetime.timedelta(days=self._config.audit_period):
                 LOG.info("User %s is due for auditing!", audit_account_name)
-                auth = TS3Auth.AuthRequest(audit_api_key, self._config.required_servers, int(self._config.required_level), audit_account_name)
+                auth = AuthRequest(audit_api_key, self._config.required_servers, int(self._config.required_level), audit_account_name)
                 if auth.success:
                     LOG.info("User %s is still on %s. Succesful audit!", audit_account_name, auth.world.get("name"))
                     # self.getTsDatabaseID(audit_ts_id)
@@ -436,7 +437,7 @@ class Bot:
 
                     if self.clientNeedsVerify(rec_from_uid):
                         LOG.info("Received verify response from %s", rec_from_name)
-                        auth = TS3Auth.AuthRequest(uapi, self._config.required_servers, int(self._config.required_level))
+                        auth = AuthRequest(uapi, self._config.required_servers, int(self._config.required_level))
 
                         LOG.debug('Name: |%s| API: |%s|', auth.name, uapi)
 
