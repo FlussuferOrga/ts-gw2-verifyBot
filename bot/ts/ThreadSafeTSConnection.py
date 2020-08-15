@@ -7,6 +7,8 @@ import ts3
 from ts3.query import TS3ServerConnection
 from ts3.response import TS3QueryResponse, TS3Response
 
+from bot.config import Config
+
 LOG = logging.getLogger(__name__)
 
 
@@ -54,9 +56,10 @@ class ThreadSafeTSConnection:
         self._port = port
         self._keepalive_interval = int(keepalive_interval)
         self._server_id = server_id
-        self._bot_nickname = bot_nickname
+        self._bot_nickname = bot_nickname + '-' + str(id(self))
         self.lock = RLock()
         self.ts_connection = None  # done in init()
+        self._keepalive_job = None
         self.init()
 
     def init(self):
@@ -67,8 +70,9 @@ class ThreadSafeTSConnection:
                 pass  # may already be closed, doesn't matter.
         self.ts_connection = ts3.query.TS3ServerConnection(self.uri)
         if self._keepalive_interval is not None:
-            schedule.cancel_job(self.keepalive)  # to avoid accumulating keepalive calls during re-inits
-            schedule.every(self._keepalive_interval).seconds.do(self.keepalive)
+            if self._keepalive_job is not None:
+                schedule.cancel_job(self._keepalive_job)  # to avoid accumulating keepalive calls during re-inits
+            self._keepalive_job = schedule.every(self._keepalive_interval).seconds.do(self.keepalive)
         if self._server_id is not None:
             self.ts3exec(lambda tc: tc.exec_("use", sid=self._server_id))
         if self._bot_nickname is not None:
@@ -77,10 +81,16 @@ class ThreadSafeTSConnection:
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_value, tb):
         self.close()
+        return None
+
+    def __del__(self):
+        self.close()
+        return None
 
     def keepalive(self):
+        LOG.info(f"Keepalive Ts Connection {self._bot_nickname}")
         self.ts3exec(lambda tc: tc.send_keepalive())
 
     def ts3exec(self,
@@ -133,15 +143,17 @@ class ThreadSafeTSConnection:
         return res, exres
 
     def close(self):
-        self.ts3exec(lambda tc: tc.close())
+        if self._keepalive_job is not None:
+            schedule.cancel_job(self._keepalive_job)
 
-    def copy(self):
-        tsc = ThreadSafeTSConnection(self._user, self._password, self._host, self._port, self._keepalive_interval, self._server_id, None)
-        # make sure to
-        # 1. not pass bot_nickname to the constructor, or the child (copy) would call forceRename and attempt to kick the parent
-        # 2. gently rename the copy afterwards
-        tsc.gentleRename(self._bot_nickname)
-        return tsc
+        # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
+        self.ts_connection.COMMAND_SET = set(self.ts_connection.COMMAND_SET)  # creat copy of frozenset
+        self.ts_connection.COMMAND_SET.add('quit')  # add command
+
+        self.ts_connection.exec_("quit")  # send quit
+        self.ts_connection.close()  # immediately quit
+
+        del self.ts_connection
 
     def gentleRename(self, nickname):
         """
@@ -158,27 +170,46 @@ class ThreadSafeTSConnection:
         self._bot_nickname = new_nick
         return self._bot_nickname
 
-    def forceRename(self, nickname):
+    def forceRename(self, target_nickname):
         """
         Attempts to forcefully rename self.
         If the chosen nickname is already taken, the bot will attempt to kick that user.
         If that fails the bot will fall back to gentle renaming itself.
         """
-        imposter, free = self.ts3exec(lambda tc: tc.query("clientfind", pattern=nickname).first(), signal_exception_handler)  # check if nickname is already in use
-        if not free:  # error occurs if no such user was found -> catching no exception means the name is taken
-            _, ex = self.ts3exec(lambda tc: tc.exec_("clientkick", reasonid=5, reasonmsg="Reserved Nickname", clid=imposter.get("clid")), signal_exception_handler)
-            if ex:
-                LOG.warning(
-                    "Renaming self to '%s' after kicking existing user with reserved name failed."
-                    " Warning: this usually only happens for serverquery logins, meaning you are running multiple bots or you"
-                    " are having stale logins from crashed bot instances on your server. Only restarts can solve the latter.",
-                    nickname)
+        whoami_response, _ = self.ts3exec(lambda tc: tc.query("whoami").first())
+        imposter, error = self.ts3exec(lambda tc: tc.query("clientfind", pattern=target_nickname).first(), signal_exception_handler)  # check if nickname is already in use
+
+        if whoami_response['client_nickname'] != target_nickname:
+            if error:
+                if error.resp.error.get('id') == '512':  # no result
+                    self.ts3exec(lambda tc: tc.exec_("clientupdate", client_nickname=target_nickname))
+                    LOG.info("Forcefully renamed self to '%s'.", target_nickname)
+                else:
+                    LOG.error("Error on rename when searching for users", exc_info=error)
             else:
-                LOG.info("Kicked user who was using the reserved registration bot name '%s'.", nickname)
-            nickname = self.gentleRename(nickname)
-            LOG.info("Renamed self to '%s'.", nickname)
+                if whoami_response['client_id'] != imposter['clid']:
+                    _, ex = self.ts3exec(lambda tc: tc.exec_("clientkick", reasonid=5, reasonmsg="Reserved Nickname", clid=imposter.get("clid")), signal_exception_handler)
+                    if ex:
+                        LOG.warning(
+                            "Renaming self to '%s' after kicking existing user with reserved name failed."
+                            " Warning: this usually only happens for serverquery logins, meaning you are running multiple bots or you"
+                            " are having stale logins from crashed bot instances on your server. Only restarts can solve the latter.",
+                            target_nickname)
+                    else:
+                        LOG.info("Kicked user who was using the reserved registration bot name '%s'.", target_nickname)
+                    target_nickname = self.gentleRename(target_nickname)
+                    LOG.info("Renamed self to '%s'.", target_nickname)
+                else:
+                    self.ts3exec(lambda tc: tc.exec_("clientupdate", client_nickname=target_nickname))
         else:
-            self.ts3exec(lambda tc: tc.exec_("clientupdate", client_nickname=nickname))
-            LOG.info("Forcefully renamed self to '%s'.", nickname)
-        self._bot_nickname = nickname
+            LOG.info("No rename necessary")
+        self._bot_nickname = target_nickname
         return self._bot_nickname
+
+
+def create_connection(config: Config, nickname: str) -> ThreadSafeTSConnection:
+    return ThreadSafeTSConnection(config.user, config.passwd,
+                                  config.host, config.port,
+                                  config.keepalive_interval,
+                                  config.server_id,
+                                  nickname)

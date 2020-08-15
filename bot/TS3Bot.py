@@ -15,6 +15,7 @@ from bot.db import ThreadSafeDBConnection
 from bot.ts import TS3Facade, ThreadSafeTSConnection, User, signal_exception_handler
 from bot.util import StringShortener
 from .TS3Auth import AuthRequest
+from .connection_pool import ConnectionPool
 from .guild_service import GuildService
 
 LOG = logging.getLogger(__name__)
@@ -22,13 +23,16 @@ LOG = logging.getLogger(__name__)
 
 class Bot:
 
-    def __init__(self, database: ThreadSafeDBConnection, ts_connection: ThreadSafeTSConnection, ts_repository: TS3Facade, config: Config):
+    def __init__(self, database: ThreadSafeDBConnection,
+                 ts_connection_pool: ConnectionPool[ThreadSafeTSConnection], ts_connection: ThreadSafeTSConnection, ts_repository: TS3Facade,
+                 config: Config):
         self._ts_repository = ts_repository
-        self._ts_connection = ts_connection
+        self._ts_connection = ts_connection  # main (representetive connection)
+        self._ts_connection_pool = ts_connection_pool  # worker connection pool
         self._config = config
         self._database_connection = database
 
-        self.guild_service = GuildService(database, ts_repository, ts_connection, config)
+        self.guild_service = GuildService(database, self._ts_connection_pool, config)
 
         admin_data, _ = self.ts_connection.ts3exec(lambda ts_con: ts_con.query("whoami").first())
         self.name = admin_data.get('client_login_name')
@@ -46,9 +50,14 @@ class Bot:
     def ts_connection(self):
         return self._ts_connection
 
+    @property
+    def ts_connection_pool(self):
+        return self._ts_connection_pool
+
     # Helps find the group ID for a group name
     def groupFind(self, group_to_find):
-        self.groups_list, _ = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergrouplist").all())
+        with self._ts_connection_pool.item() as ts_connection:
+            self.groups_list, _ = ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergrouplist").all())
         for group in self.groups_list:
             if group.get('name') == group_to_find:
                 return group.get('sgid')
@@ -57,10 +66,11 @@ class Bot:
     def clientNeedsVerify(self, unique_client_id):
         client_db_id = self.getTsDatabaseID(unique_client_id)
 
-        # Check if user is in verified group
-        if any(perm_grp.get('name') == self.verified_group for perm_grp in
-               self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all())[0]):
-            return False  # User already verified
+        with self._ts_connection_pool.item() as ts_connection:
+            # Check if user is in verified group
+            if any(perm_grp.get('name') == self.verified_group for perm_grp in
+                   ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all())[0]):
+                return False  # User already verified
 
         # Check if user is authenticated in database and if so, re-adds them to the group
         with self._database_connection.lock:
@@ -76,9 +86,10 @@ class Bot:
             client_db_id = self.getTsDatabaseID(unique_client_id)
             LOG.debug("Adding Permissions: CLUID [%s] SGID: %s   CLDBID: %s", unique_client_id, self.vgrp_id, client_db_id)
             # Add user to group
-            _, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupaddclient", sgid=self.vgrp_id, cldbid=client_db_id))
-            if ex:
-                LOG.error("Unable to add client to '%s' group. Does the group exist?", self.verified_group)
+            with self._ts_connection_pool.item() as ts_connection:
+                _, ex = ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupaddclient", sgid=self.vgrp_id, cldbid=client_db_id))
+                if ex:
+                    LOG.error("Unable to add client to '%s' group. Does the group exist?", self.verified_group)
         except ts3.query.TS3QueryError as err:
             LOG.error("Setting permissions failed: %s", err)  # likely due to bad client id
 
@@ -87,18 +98,19 @@ class Bot:
             client_db_id = self.getTsDatabaseID(unique_client_id)
             LOG.debug("Removing Permissions: CLUID [%s] SGID: %s   CLDBID: %s", unique_client_id, self.vgrp_id, client_db_id)
 
-            # Remove user from group
-            _, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=self.vgrp_id, cldbid=client_db_id), signal_exception_handler)
-            if ex:
-                LOG.error("Unable to remove client from '%s' group. Does the group exist and are they member of the group?", self.verified_group)
-            # Remove users from all groups, except the whitelisted ones
-            if self._config.purge_completely:
-                # FIXME: remove channel groups as well
-                assigned_groups, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all())
-                if assigned_groups is not None:
-                    for g in assigned_groups:
-                        if g.get("name") not in self._config.purge_whitelist:
-                            self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=g.get("sgid"), cldbid=client_db_id), lambda ex: None)
+            with self._ts_connection_pool.item() as ts_connection:
+                # Remove user from group
+                _, ex = ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=self.vgrp_id, cldbid=client_db_id), signal_exception_handler)
+                if ex:
+                    LOG.error("Unable to remove client from '%s' group. Does the group exist and are they member of the group?", self.verified_group)
+                # Remove users from all groups, except the whitelisted ones
+                if self._config.purge_completely:
+                    # FIXME: remove channel groups as well
+                    assigned_groups, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all())
+                    if assigned_groups is not None:
+                        for g in assigned_groups:
+                            if g.get("name") not in self._config.purge_whitelist:
+                                ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=g.get("sgid"), cldbid=client_db_id), lambda ex: None)
         except TS3QueryError as err:
             LOG.error("Removing permissions failed: %s", err)  # likely due to bad client id
 
@@ -219,11 +231,11 @@ class Bot:
                             LOG.info("Player %s is member of guild '%s' and will be assigned the TS group '%s'.", auth.name, g, ts_group)
                             self.ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupaddclient", sgid=ts_groups[ts_group], cldbid=client_db_id))
 
-    def auditUsers(self):
+    def trigger_user_audit(self):
         LOG.info("Auditing users")
-        threading.Thread(target=self._auditUsers).start()
+        threading.Thread(target=self._audit_users).start()
 
-    def _auditUsers(self):
+    def _audit_users(self):
         self.c_audit_date = datetime.date.today()  # Update current date everytime run
         self.db_audit_list = []
         with self._database_connection.lock:
@@ -247,7 +259,8 @@ class Bot:
                 if auth.success:
                     LOG.info("User %s is still on %s. Succesful audit!", audit_account_name, auth.world.get("name"))
                     # self.getTsDatabaseID(audit_ts_id)
-                    self.updateGuildTags(User(self.ts_connection, unique_id=audit_ts_id), auth)
+                    with self._ts_connection_pool.item() as ts_connection:
+                        self.updateGuildTags(User(ts_connection, unique_id=audit_ts_id), auth)
                     with self._database_connection.lock:
                         self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", (self.c_audit_date, audit_ts_id,))
                         self._database_connection.conn.commit()
@@ -303,25 +316,26 @@ class Bot:
     def setResetroster(self, date, red=[], green=[], blue=[], ebg=[]):
         leads = ([], red, green, blue, ebg)  # keep RGB order! EBG as last! Pad first slot (header) with empty list
 
-        channels = [(p, c.replace("$DATE", date)) for p, c in self._config.reset_channels]
-        for i in range(len(channels)):
-            pattern, clean = channels[i]
-            lead = leads[i]
+        with self._ts_connection_pool.item() as ts_connection:
+            channels = [(p, c.replace("$DATE", date)) for p, c in self._config.reset_channels]
+            for i in range(len(channels)):
+                pattern, clean = channels[i]
+                lead = leads[i]
 
-            TS3_MAX_SIZE_CHANNEL_NAME = 40
-            shortened = StringShortener(TS3_MAX_SIZE_CHANNEL_NAME - len(clean)).shorten(lead)
-            newname = "%s%s" % (clean, ", ".join(shortened))
+                TS3_MAX_SIZE_CHANNEL_NAME = 40
+                shortened = StringShortener(TS3_MAX_SIZE_CHANNEL_NAME - len(clean)).shorten(lead)
+                newname = "%s%s" % (clean, ", ".join(shortened))
 
-            channel = self._ts_repository.channel_find(pattern)
-            if channel is None:
-                LOG.warning("No channel found with pattern '%s'. Skipping.", pattern)
-                return
+                channel = self._ts_repository.channel_find(pattern)
+                if channel is None:
+                    LOG.warning("No channel found with pattern '%s'. Skipping.", pattern)
+                    return
 
-            _, ts3qe = self._ts_connection.ts3exec(lambda tsc: tsc.exec_("channeledit", cid=channel.channel_id, channel_name=newname), signal_exception_handler)
-            if ts3qe is not None and ts3qe.resp.error["id"] == "771":
-                # channel name already in use
-                # probably not a bug (channel still unused), but can be a config problem
-                LOG.info("Channel '%s' already exists. This is probably not a problem. Skipping.", newname)
+                _, ts3qe = ts_connection.ts3exec(lambda tsc: tsc.exec_("channeledit", cid=channel.channel_id, channel_name=newname), signal_exception_handler)
+                if ts3qe is not None and ts3qe.resp.error["id"] == "771":
+                    # channel name already in use
+                    # probably not a bug (channel still unused), but can be a config problem
+                    LOG.info("Channel '%s' already exists. This is probably not a problem. Skipping.", newname)
         return 0
 
     def getActiveCommanders(self):
