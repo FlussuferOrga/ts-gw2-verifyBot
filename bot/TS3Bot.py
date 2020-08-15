@@ -317,6 +317,8 @@ class Bot:
         leads = ([], red, green, blue, ebg)  # keep RGB order! EBG as last! Pad first slot (header) with empty list
 
         with self._ts_connection_pool.item() as ts_connection:
+            facade = TS3Facade(ts_connection)
+
             channels = [(p, c.replace("$DATE", date)) for p, c in self._config.reset_channels]
             for i in range(len(channels)):
                 pattern, clean = channels[i]
@@ -326,7 +328,7 @@ class Bot:
                 shortened = StringShortener(TS3_MAX_SIZE_CHANNEL_NAME - len(clean)).shorten(lead)
                 newname = "%s%s" % (clean, ", ".join(shortened))
 
-                channel = self._ts_repository.channel_find(pattern)
+                channel = facade.channel_find(pattern)
                 if channel is None:
                     LOG.warning("No channel found with pattern '%s'. Skipping.", pattern)
                     return
