@@ -1,10 +1,13 @@
 import logging
 import threading
 
+import flask_cors
 import waitress  # productive serve
 from flask import Flask
+from werkzeug.exceptions import HTTPException
 
 from bot.rest.controller import GuildController, HealthController, OtherController, ResetRosterController
+from bot.rest.utils import error_response
 
 LOG = logging.getLogger(__name__)
 
@@ -36,14 +39,25 @@ class HTTPServer(Flask):
 
 def create_http_server(bot, port=8080):
     app = HTTPServer(bot, port)
+    flask_cors.CORS(app)
 
+    register_controllers(app, bot)
+    register_error_handlers(flask=app)
+    return app
+
+
+def register_controllers(app, bot):
     controller = [
         HealthController(),
-        GuildController(bot),
+        GuildController(bot.guild_service),
         ResetRosterController(bot),
         OtherController(bot),
     ]
-
     for ctrl in controller:
         app.register_blueprint(ctrl.api)
-    return app
+
+
+def register_error_handlers(flask: Flask):
+    @flask.errorhandler(HTTPException)
+    def _handle_error(e: HTTPException):
+        return error_response(e.code, e.name, e.description)

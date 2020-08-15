@@ -1,0 +1,98 @@
+openapi: 3.0.0
+info:
+  title: ts-gw2-verifyBot
+  description: ts-gw2-verifyBot
+  version: 1.0.0
+servers:
+  - url: 'http://localhost:10137'
+paths:
+  /guild:
+    post:
+      summary: Create a Guild Group and channel
+      operationId: guildCreate
+      tags:
+        - guilds
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuildCreateRequest"
+      responses:
+        default:
+          $ref: '#/components/responses/genericErrorResponse'
+        200:
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                type: string
+    delete:
+      summary: "Deletes a Guild channel and Group"
+      operationId: guildDelete
+      tags:
+        - guilds
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+      responses:
+        default:
+          $ref: '#/components/responses/genericErrorResponse'
+        200:
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                type: string
+components:
+  responses:
+    genericErrorResponse:
+      description: "Error Response"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        name:
+          description: Short error name
+          type: string
+        code:
+          description: HTTP error code
+          type: number
+        desc:
+          description: Description of the error that occured
+          type: string
+    GuildCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          example: "Foo Fighters"
+          minLength: 3
+        groupname:
+          type: string
+          description: Default is tag if not supplied or null
+          minLength: 3
+          nullable: true
+          example: null
+        contacts:
+          type: array
+          nullable: true
+          example: ['UserName.1234']
+          items:
+            $ref: "#/components/schemas/GuildContact"
+    GuildContact:
+      type: string
+

@@ -25,7 +25,7 @@ class TS3Facade:
 
     # FIXME: tests
     def channel_info(self, channel_id: int):
-        resp, ts3qe = self._ts3_connection.ts3exec(lambda tsc: tsc.query("channelinfo", cid=channel_id).all())
+        resp, _ = self._ts3_connection.ts3exec(lambda tsc: tsc.query("channelinfo", cid=channel_id).all())
         return resp
 
     # FIXME: tests
@@ -34,7 +34,7 @@ class TS3Facade:
 
     # FIXME: tests
     def servergroup_list(self):
-        resp, ts3qe = self._ts3_connection.ts3exec(lambda tsc: tsc.query("servergrouplist").all())
+        resp, _ = self._ts3_connection.ts3exec(lambda tsc: tsc.query("servergrouplist").all())
         return resp
 
     # FIXME: tests
