@@ -87,10 +87,6 @@ class ThreadSafeTSConnection:
         self.close()
         return None
 
-    # def __del__(self):
-    #     self.close()
-    #     return None
-
     def keepalive(self):
         LOG.info(f"Keepalive Ts Connection {self._bot_nickname}")
         self.ts3exec(lambda tc: tc.send_keepalive())

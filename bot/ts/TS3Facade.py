@@ -7,7 +7,7 @@ from more_itertools import unique_everseen
 from ts3 import TS3Error
 from ts3.filetransfer import TS3FileTransfer, TS3UploadError
 
-from bot.ts.ThreadSafeTSConnection import ThreadSafeTSConnection, signal_exception_handler
+from bot.ts.ThreadSafeTSConnection import ThreadSafeTSConnection, ignore_exception_handler, signal_exception_handler
 from bot.ts.types.channel_list_detail import ChannelListDetail
 from bot.ts.types.whoami import WhoamiResponse
 
@@ -17,6 +17,15 @@ LOG = logging.getLogger(__name__)
 class TS3Facade:
     def __init__(self, ts3_connection: ThreadSafeTSConnection):
         self._ts3_connection = ts3_connection
+
+    def close(self):
+        self._ts3_connection.close()
+
+    def isConnected(self):
+        return self._ts3_connection.ts3exec(lambda tc: tc.is_connected(), signal_exception_handler)[0]
+
+    def wait_for_event(self, timeout: int):
+        return self._ts3_connection.ts3exec(lambda tc: tc.wait_for_event(timeout=timeout), ignore_exception_handler)[0]
 
     def send_text_message_to_client(self, target_client_id: int, msg: str):
         self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode=1, target=target_client_id, msg=msg))
@@ -177,8 +186,23 @@ class TS3Facade:
     def client_get_name_from_uid(self, client_uid: str):
         return self._ts3_connection.ts3exec(lambda t: t.query("clientgetnamefromuid", cluid=client_uid).first())
 
+    def client_get_name_from_dbid(self, client_dbid):
+        return self._ts3_connection.ts3exec(lambda t: t.query("clientgetnamefromdbid", cldbid=client_dbid).first())[0]
+
     def client_info(self, client_id: str):
         return self._ts3_connection.ts3exec(lambda t: t.query("clientinfo", clid=client_id).first())[0]
+
+    def client_db_id_from_uid(self, client_uid):
+        return self._ts3_connection.ts3exec(lambda t: t.query("clientgetdbidfromuid", cluid=client_uid).first().get("cldbid"))[0]
+
+    def client_ids_from_uid(self, client_uid):
+        return self._ts3_connection.ts3exec(lambda t: t.query("clientgetids", cluid=client_uid).all())[0]
+
+    def force_rename(self, target_nickname: str):
+        return self._ts3_connection.forceRename(target_nickname=target_nickname)
+
+    def channel_edit(self, channel_id: str, new_channel_name: str):
+        return self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("channeledit", cid=channel_id, channel_name=new_channel_name), signal_exception_handler)
 
 
 class Channel:

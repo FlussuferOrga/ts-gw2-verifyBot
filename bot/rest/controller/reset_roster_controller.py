@@ -27,11 +27,3 @@ class ResetRosterController(AbstractController):
             LOG.info("Received request to set resetroster. RBL: %s GBL: %s, BBL: %s, EBG: %s", ", ".join(red), ", ".join(green), ", ".join(blue), ", ".join(ebg))
             res = self._bot.setResetroster(date, red, green, blue, ebg)
             return "OK" if res == 0 else abort(400, res)
-
-        @self.api.route("/registration", methods=["DELETE"])
-        def _delete_registration():
-            body = request.json
-            gw2account = try_get(body, "gw2account", default="")
-            LOG.info("Received request to delete user '%s' from the TS registration database.", gw2account)
-            changes = self._bot.removePermissionsByGW2Account(gw2account)
-            return {"changes": changes}

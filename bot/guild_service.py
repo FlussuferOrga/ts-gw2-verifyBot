@@ -8,7 +8,7 @@ import bot.gwapi as gw2api
 from bot.config import Config
 from bot.connection_pool import ConnectionPool
 from bot.db import ThreadSafeDBConnection
-from bot.ts import TS3Facade, ThreadSafeTSConnection, User, signal_exception_handler
+from bot.ts import TS3Facade, User
 
 LOG = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def _handle_guild_icon(name, ts3_facade):
 
 
 class GuildService:
-    def __init__(self, database: ThreadSafeDBConnection, ts_connection_pool: ConnectionPool[ThreadSafeTSConnection], config: Config):
+    def __init__(self, database: ThreadSafeDBConnection, ts_connection_pool: ConnectionPool[TS3Facade], config: Config):
         self._database = database
         self.ts_connection_pool = ts_connection_pool
         self._config = config
@@ -87,12 +87,11 @@ class GuildService:
 
         LOG.info("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'.", guild_name, guild_tag, group_name, ", ".join(contacts))
 
-        with self.ts_connection_pool.item() as ts3conn:
-            ts_facade = TS3Facade(ts3conn)
+        with self.ts_connection_pool.item() as ts_facade:
             # lock for the whole block to avoid constant interference
             # locking the ts3conn is vital to properly do the TS3FileTransfer
             # down the line.
-            with ts3conn.lock, self._database.lock:
+            with self._database.lock:
                 #############################################
                 # CHECK IF GROUPS OR CHANNELS ALREADY EXIST #
                 #############################################
@@ -214,7 +213,7 @@ class GuildService:
                         accs = [row[0] for row in self._database.cursor.execute("SELECT ts_db_id FROM users WHERE lower(account_name) = lower(?)", (c,)).fetchall()]
                         for acc in accs:
                             try:
-                                user = User(ts3conn, unique_id=acc, ex_hand=signal_exception_handler)
+                                user = User(ts_facade, unique_id=acc)
                                 ex = ts_facade.set_client_channelgroup(channel_id=cinfo.get("cid"), channelgroup_id=contactgroup.get("cgid"), client_db_id=user.ts_db_id)
                                 # while we are at it, add the contacts to the guild group as well
                                 ts_facade.servergroup_client_add(servergroup_id=guild_servergroup_id, client_db_id=user.ts_db_id)
@@ -318,8 +317,7 @@ class GuildService:
             self._database.cursor.execute("DELETE FROM guilds WHERE guild_name = ?", (guild_name,))
             self._database.conn.commit()
 
-        with self.ts_connection_pool.item() as ts3conn:
-            ts3_facade = TS3Facade(ts3conn)
+        with self.ts_connection_pool.item() as ts3_facade:
             # CHANNEL
             channel_name = self._build_channel_name(guild_info)
             channel = ts3_facade.channel_find(channel_name)

@@ -5,7 +5,7 @@ from .user import User
 
 __all__ = [
     'Channel', 'TS3Facade',
-    'ThreadSafeTSConnection', 'create_connection'
-                              'ignore_exception_handler', 'signal_exception_handler', 'default_exception_handler',
+    'ThreadSafeTSConnection', 'create_connection',
+    'ignore_exception_handler', 'signal_exception_handler', 'default_exception_handler',
     'User'
 ]

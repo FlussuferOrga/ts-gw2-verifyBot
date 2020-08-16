@@ -15,8 +15,7 @@ from bot.connection_pool import ConnectionPool
 from bot.db import get_or_create_database
 from bot.rest import HTTPServer
 from bot.rest import server
-from bot.ts import Channel, TS3Facade, ThreadSafeTSConnection, create_connection, ignore_exception_handler, \
-    signal_exception_handler
+from bot.ts import Channel, TS3Facade, create_connection
 
 LOG = logging.getLogger(__name__)
 
@@ -33,9 +32,9 @@ def main():  #
 
     config = Config(args.config_path)
     database = get_or_create_database(config.db_file_name, config.current_version)
-    ts_connection_pool: ConnectionPool[ThreadSafeTSConnection] = ConnectionPool(create=lambda: create_connection(config, config.bot_nickname),
-                                                                                destroy_function=lambda conn: conn.close(),
-                                                                                max_size=10, max_usage=1, idle=20, ttl=120)
+    ts_connection_pool: ConnectionPool[TS3Facade] = ConnectionPool(create=lambda: TS3Facade(create_connection(config, config.bot_nickname)),
+                                                                   destroy_function=lambda obj: obj.close(),
+                                                                   max_size=2, max_usage=25, idle=120, ttl=600)
 
     #######################################
     # Begins the connect to Teamspeak
@@ -45,9 +44,8 @@ def main():  #
         try:
             LOG.info("Connecting to Teamspeak server...")
 
-            with ts_connection_pool.item() as main_ts3conn:
-                ts_facade: TS3Facade = TS3Facade(main_ts3conn)
-                bot_instance = Bot(database, ts_connection_pool, main_ts3conn, ts_facade, config)
+            with ts_connection_pool.item() as ts_facade:
+                bot_instance = Bot(database, ts_connection_pool, ts_facade, config)
 
                 http_server = server.create_http_server(bot_instance, port=config.ipc_port)
                 http_server.start()
@@ -101,12 +99,12 @@ def main():  #
 
                 # Forces script to loop forever while we wait for events to come in, unless connection timed out. Then it should loop a new bot into creation.
                 LOG.info("BOT now idle, waiting for requests.")
-                while main_ts3conn.ts3exec(lambda tc: tc.is_connected(), signal_exception_handler)[0]:
+                while ts_facade.isConnected():
                     # auditjob + keepalive check
                     schedule.run_pending()
                     event: TS3Response
                     try:
-                        event, _ = main_ts3conn.ts3exec(lambda tc: tc.wait_for_event(timeout=config.bot_sleep_idle), ignore_exception_handler)
+                        event = ts_facade.wait_for_event(timeout=config.bot_sleep_idle)
                         if event:
                             if "msg" in event.parsed[0]:
                                 # text message
@@ -117,7 +115,7 @@ def main():  #
                             else:
                                 bot_instance.loginEventHandler(event)
                     except Exception as ex:
-                        LOG.error("Error while trying to handle event %s: %s", str(event), str(ex))
+                        LOG.error("Error while trying to handle event %s:", str(event), exc_info=ex)
 
             LOG.warning("It appears the BOT has lost connection to teamspeak. Trying to restart connection in %s seconds....", config.bot_sleep_conn_lost)
             time.sleep(config.bot_sleep_conn_lost)

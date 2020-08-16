@@ -1,6 +1,5 @@
 import logging
 
-from bot.ts import TS3Facade
 from bot.ts.user import User
 
 LOG = logging.getLogger(__name__)
@@ -11,8 +10,7 @@ class CommanderChecker:
         self._commander_group_names = commander_group_names
         self._ts3bot = ts3bot
 
-        with self._ts3bot.ts_connection_pool.item() as ts_connection:
-            facade = TS3Facade(ts_connection)
+        with self._ts3bot.ts_connection_pool.item() as facade:
             channel_list, ex = facade.channelgroup_list()
             cgroups = list(filter(lambda g: g.get("name") in commander_group_names, channel_list))
         if len(cgroups) < 1:
@@ -28,14 +26,13 @@ class CommanderChecker:
 
         active_commanders = []
 
-        with self._ts3bot.ts_connection_pool.item() as ts_connection:
-            ts_facade = TS3Facade(ts_connection)
+        with self._ts3bot.ts_connection_pool.item() as ts_facade:
             acs = ts_facade.channelgroup_client_list(self._commander_groups)
             LOG.info(acs)
-            active_commanders_entries = [(c, self._ts3bot.getUserDBEntry(self._ts3bot.getTsUniqueID(c.get("cldbid")))) for c in acs]
+            active_commanders_entries = [(c, self._ts3bot.getUserDBEntry(ts_facade.client_get_name_from_dbid(client_dbid=c.get("cldbid")).get("cluid"))) for c in acs]
             for ts_entry, db_entry in active_commanders_entries:
                 if db_entry is not None:  # or else the user with the commander group was not registered and therefore not in the DB
-                    user = User(ts_connection, ts_db_id=ts_entry.get("cldbid"))
+                    user = User(ts_facade, ts_db_id=ts_entry.get("cldbid"))
                     if user.current_channel.channel_id == ts_entry.get("cid"):
                         # user could have the group in a channel but not be in there atm
                         ac = {"account_name": db_entry["account_name"], "ts_cluid": db_entry["ts_db_id"]}

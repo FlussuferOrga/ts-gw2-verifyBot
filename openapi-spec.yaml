@@ -6,6 +6,70 @@ info:
 servers:
   - url: 'http://localhost:10137'
 paths:
+  /registration:
+    delete:
+      summary: delete a registration for an account
+      operationId: registrationDelete
+      tags:
+        - registration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - gw2account
+              properties:
+                gw2account:
+                  type: string
+                  example: "User.1234"
+      responses:
+        default:
+          $ref: '#/components/responses/genericErrorResponse'
+        200:
+          description: Response with active commanders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changes:
+                    type: integer
+  /commanders:
+    get:
+      summary: List active commanders
+      operationId: commandersList
+      tags:
+        - commanders
+      responses:
+        default:
+          $ref: '#/components/responses/genericErrorResponse'
+        200:
+          description: Response with active commanders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  commanders:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        account_name:
+                          type: string
+                        ts_channel_name:
+                          type: string
+                        ts_channel_path:
+                          type: array
+                          items:
+                            type: string
+                        ts_cluid:
+                          type: string
+                        ts_display_name:
+                          type: string
+
   /guild:
     post:
       summary: Create a Guild Group and channel
