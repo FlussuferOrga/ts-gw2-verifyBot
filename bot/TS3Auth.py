@@ -94,7 +94,7 @@ class AuthRequest:
             try:
                 ginfo = gw2api.guild_get(guild_id)
                 self.guild_tags.append(ginfo.get('tag'))
-                self.guild_names.append(ginfo.get('guild_name'))
+                self.guild_names.append(ginfo.get('name'))
             except gw2api.ApiError as ex:
                 LOG.error("Exception while trying to obtain details for guild '%s': %s", guild_id, str(ex))
                 self.guilds_error = True
