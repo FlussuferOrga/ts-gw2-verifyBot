@@ -3,7 +3,6 @@ import os
 from typing import List, Tuple
 
 import ts3
-from more_itertools import unique_everseen
 from ts3 import TS3Error
 from ts3.filetransfer import TS3FileTransfer, TS3UploadError
 
@@ -161,7 +160,7 @@ class TS3Facade:
                         raise ts3qe
             if channel_group_result is not None:
                 result.extend(channel_group_result)
-        return list(unique_everseen(result, key=lambda inner_dict: frozenset(inner_dict.items())))  # removes dublicates
+        return [dict(s) for s in set(frozenset(d.items()) for d in result)]  # removes dublicates
 
     def set_client_channelgroup(self, channel_id: str, channelgroup_id: str, client_db_id: str):
         _, ex = self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("setclientchannelgroup", cgid=channelgroup_id, cid=channel_id, cldbid=client_db_id), signal_exception_handler)
