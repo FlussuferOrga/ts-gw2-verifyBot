@@ -1,4 +1,7 @@
-# -*- coding: utf-8 -*-
+"""
+Idea & Base from https://pypi.org/project/connection-pool/ https://github.com/zhouyl/ConnectionPool
+Modification by https://github.com/Xyaren
+"""
 
 import queue
 import threading
