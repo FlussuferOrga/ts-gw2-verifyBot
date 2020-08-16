@@ -1,4 +1,16 @@
+import logging
+import os
+from typing import List, Tuple
+
+import ts3
+from ts3 import TS3Error
+from ts3.filetransfer import TS3FileTransfer, TS3UploadError
+
 from bot.ts.ThreadSafeTSConnection import ThreadSafeTSConnection, signal_exception_handler
+from bot.ts.types.channel_list_detail import ChannelListDetail
+from bot.ts.types.whoami import WhoamiResponse
+
+LOG = logging.getLogger(__name__)
 
 
 class TS3Facade:
@@ -37,6 +49,9 @@ class TS3Facade:
         resp, _ = self._ts3_connection.ts3exec(lambda tsc: tsc.query("servergrouplist").all())
         return resp
 
+    def servergroup_list_by_client(self, client_db_id: str):
+        return self._ts3_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all(), signal_exception_handler)[0]
+
     # FIXME: tests
     def servergroup_delete(self, servergroup_id: int, force: bool = False):
         self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("servergroupdel", sgid=servergroup_id, force=1 if force else 0))
@@ -50,15 +65,100 @@ class TS3Facade:
                        channel_maxclients: int = -1,  # passing -1 makes the number of clients unlimited
                        channel_order: int = 0
                        ):
-        self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("channelcreate",
-                                                           channel_name=channel_name,
-                                                           channel_description=channel_description,
-                                                           cpid=channel_parent_id,
-                                                           channel_flag_permanent=1 if channel_flag_permanent else 0,
-                                                           channel_maxclients=channel_maxclients,
-                                                           channel_order=channel_order,
-                                                           channel_flag_maxclients_unlimited=1 if channel_maxclients == -1 else 0).first(),
-                                     signal_exception_handler)
+        ts_exec = self._ts3_connection.ts3exec(lambda tsc: tsc.query("channelcreate", channel_name=channel_name, channel_description=channel_description, cpid=channel_parent_id,
+                                                                     channel_flag_permanent=1 if channel_flag_permanent else 0, channel_maxclients=channel_maxclients, channel_order=channel_order,
+                                                                     channel_flag_maxclients_unlimited=1 if channel_maxclients == -1 else 0).first(), signal_exception_handler)
+        return ts_exec
+
+    def channel_add_permission(self, channel_id: str, permission_id: str, permission_value: int, negated: bool = False, skip: bool = False):
+        return self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("channeladdperm",
+                                                                  cid=channel_id, permsid=permission_id,
+                                                                  permvalue=permission_value,
+                                                                  permnegated=1 if negated else 0,
+                                                                  permskip=1 if skip else 0),
+                                            signal_exception_handler)
+
+    def channel_add_permissions(self, channel_id: str, permissions: List[Tuple[str, int]]):
+        for permission_id, permission_value in permissions:
+            self.channel_add_permission(channel_id, permission_id=permission_id, permission_value=permission_value)
+
+    def channel_list(self) -> Tuple[List[ChannelListDetail], Exception]:
+        return self._ts3_connection.ts3exec(lambda tc: tc.query("channellist").all(), signal_exception_handler)
+
+    def use(self, server_id: int):
+        self._ts3_connection.ts3exec(lambda tc: tc.exec_("use", sid=server_id))
+
+    def whoami(self) -> Tuple[WhoamiResponse, Exception]:
+        return self._ts3_connection.ts3exec(lambda ts_con: ts_con.query("whoami").first())
+
+    def upload_icon(self, icon_id, icon_data):
+        def _ts_file_upload_hook(ts3_response: ts3.response.TS3QueryResponse):
+            if ts3_response is not None:
+                if ts3_response.parsed is not None and len(ts3_response.parsed) == 1 and ts3_response.parsed[0] is not None:
+                    if "msg" in ts3_response.parsed[0].keys() and ts3_response.parsed[0]["msg"] == "invalid size":
+                        raise TS3UploadError(0, "The uploaded Icon is too large")
+
+        icon_server_path = f"/icon_{icon_id}"
+        icon_local_file_name = f"{icon_id}_icon.svg"  # using name instead of tag, because tags are not unique
+        with open(icon_local_file_name, "w+b") as file_handle:
+            try:
+                # svg
+                file_handle.write(icon_data)
+                file_handle.flush()
+                file_handle.seek(0)
+
+                # it is important to have acquired the lock for the ts3conn globally
+                # at this point, as we directly pass the wrapped connection around
+                upload = TS3FileTransfer(self._ts3_connection.ts_connection)
+                _ = upload.init_upload(input_file=file_handle,
+                                       name=icon_server_path,
+                                       cid=0,  # 0 = Serverwide
+                                       query_resp_hook=_ts_file_upload_hook)
+                LOG.info(f"Icon {icon_local_file_name} uploaded as {icon_server_path}.")
+            except TS3Error as ts3error:
+                LOG.error("Error Uploading icon %s.", icon_local_file_name)
+                LOG.error(ts3error)
+            finally:
+                file_handle.close()
+                os.remove(icon_local_file_name)
+
+    def servergroup_add(self, servergroup_name: str):
+        return self._ts3_connection.ts3exec(lambda tsc: tsc.query("servergroupadd", name=servergroup_name).first(), signal_exception_handler)
+
+    def servergroup_add_permission(self, servergroup_id: str, permission_id: str, permission_value: int, negated: bool = False, skip: bool = False):
+        return self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("servergroupaddperm",
+                                                                  sgid=servergroup_id, permsid=permission_id,
+                                                                  permvalue=permission_value,
+                                                                  permnegated=1 if negated else 0,
+                                                                  permskip=1 if skip else 0),
+                                            signal_exception_handler)
+
+    def servergroup_add_permissions(self, servergroup_id: str, permissions: List[Tuple[str, int]]):
+        for permission_id, permission_value in permissions:
+            self.servergroup_add_permission(servergroup_id, permission_id=permission_id, permission_value=permission_value)
+
+    def channelgroup_list(self):
+        return self._ts3_connection.ts3exec(lambda tsc: tsc.query("channelgrouplist").all(), signal_exception_handler)
+
+    def set_client_channelgroup(self, channel_id: str, channelgroup_id: str, client_db_id: str):
+        _, ex = self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("setclientchannelgroup", cgid=channelgroup_id, cid=channel_id, cldbid=client_db_id), signal_exception_handler)
+        return ex
+
+    def servergroup_client_add(self, servergroup_id: str, client_db_id: str):
+        _, ex = self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("servergroupaddclient", sgid=servergroup_id, cldbid=client_db_id), signal_exception_handler)
+        return ex
+
+    def servergroup_client_del(self, servergroup_id: str, client_db_id: str):
+        _, ex = self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("servergroupdelclient", sgid=servergroup_id, cldbid=client_db_id), signal_exception_handler)
+        return ex
+
+    def server_notify_register(self, events: List[str]):
+        for event in events:
+            self._ts3_connection.ts3exec(lambda tc: tc.exec_("servernotifyregister", event=event))  # alert channel chat
+
+    def client_move(self, client_id: str, channel_id: str):
+        _, chnl_err = self._ts3_connection.ts3exec(lambda tc: tc.exec_("clientmove", clid=client_id, cid=channel_id))
+        return chnl_err
 
 
 class Channel:

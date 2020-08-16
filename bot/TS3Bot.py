@@ -34,7 +34,7 @@ class Bot:
 
         self.guild_service = GuildService(database, self._ts_connection_pool, config)
 
-        admin_data, _ = self.ts_connection.ts3exec(lambda ts_con: ts_con.query("whoami").first())
+        admin_data, _ = self._ts_repository.whoami()
         self.name = admin_data.get('client_login_name')
         self.client_id = admin_data.get('client_id')
 
@@ -166,19 +166,19 @@ class Bot:
             self._database_connection.conn.commit()
 
     # def updateGuildTags(self, client_db_id, auth):
-    def updateGuildTags(self, ts_connection, user, auth):
+    def updateGuildTags(self, ts_facade, user, auth):
         if auth.guilds_error:
             LOG.error("Did not update guild groups for player '%s', as loading the guild groups caused an error.", auth.name)
             return
         uid = user.unique_id  # self.getTsUniqueID(client_db_id)
         client_db_id = user.ts_db_id
-        ts_groups = {sg.get("name"): sg.get("sgid") for sg in ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergrouplist").all())[0]}
+        ts_groups = {sg.get("name"): sg.get("sgid") for sg in ts_facade.servergroup_list()}
         ingame_member_of = set(auth.guild_names)
         # names of all groups the user is in, not just guild ones
         current_group_names = []
         try:
             current_group_names = [g.get("name") for g in
-                                   ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all(), signal_exception_handler)[0]]
+                                   ts_facade.servergroup_list_by_client(client_db_id=client_db_id)]
         except TypeError:
             # user had no groups (results in None, instead of an empty list) -> just stick with the []
             pass
@@ -198,7 +198,7 @@ class Bot:
         for ggroup, gname in current_guild_groups:
             if ggroup in hidden_groups:
                 LOG.info("Player %s chose to hide group '%s', which is now removed.", auth.name, ggroup)
-                ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=ts_groups[ggroup], cldbid=client_db_id))
+                ts_facade.servergroup_client_del(servergroup_id=ts_groups[ggroup], client_db_id=client_db_id)
             elif gname not in ingame_member_of:
                 if ggroup not in ts_groups:
                     LOG.warning(
@@ -208,7 +208,7 @@ class Bot:
                         ggroup, auth.name, gname)
                 else:
                     LOG.info("Player %s is no longer part of the guild '%s'. Removing attached group '%s'.", auth.name, gname, ggroup)
-                    ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=ts_groups[ggroup], cldbid=client_db_id))
+                    ts_facade.servergroup_client_del(servergroup_id=ts_groups[ggroup], client_db_id=client_db_id)
 
         # ADD DUE GROUPS
         for g in ingame_member_of:
@@ -229,7 +229,7 @@ class Bot:
                                 auth.name, ts_group, g)
                         else:
                             LOG.info("Player %s is member of guild '%s' and will be assigned the TS group '%s'.", auth.name, g, ts_group)
-                            ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupaddclient", sgid=ts_groups[ts_group], cldbid=client_db_id))
+                            ts_facade.servergroup_client_add(servergroup_id=ts_groups[ts_group], client_db_id=client_db_id)
 
     def trigger_user_audit(self):
         LOG.info("Auditing users")
@@ -260,7 +260,8 @@ class Bot:
                     LOG.info("User %s is still on %s. Succesful audit!", audit_account_name, auth.world.get("name"))
                     # self.getTsDatabaseID(audit_ts_id)
                     with self._ts_connection_pool.item() as ts_connection:
-                        self.updateGuildTags(ts_connection, User(ts_connection, unique_id=audit_ts_id), auth)
+                        ts_facade = TS3Facade(ts_connection)
+                        self.updateGuildTags(ts_facade, User(ts_connection, unique_id=audit_ts_id), auth)
                     with self._database_connection.lock:
                         self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", (self.c_audit_date, audit_ts_id,))
                         self._database_connection.conn.commit()
@@ -472,7 +473,7 @@ class Bot:
 
                                 # Add user to database so we can query their API key over time to ensure they are still on our server
                                 self.addUserToDB(rec_from_uid, auth.name, uapi, today_date, today_date)
-                                self.updateGuildTags(self.ts_connection, User(self.ts_connection, unique_id=rec_from_uid, ex_hand=signal_exception_handler), auth)
+                                self.updateGuildTags(self._ts_repository, User(self.ts_connection, unique_id=rec_from_uid, ex_hand=signal_exception_handler), auth)
                                 # self.updateGuildTags(rec_from_uid, auth)
                                 LOG.debug("Added user to DB with ID %s", rec_from_uid)
 

@@ -1,15 +1,16 @@
 import logging
 from threading import RLock
-from typing import Callable, Tuple
+from typing import Callable, Tuple, TypeVar
 
 import schedule
 import ts3
 from ts3.query import TS3ServerConnection
-from ts3.response import TS3QueryResponse, TS3Response
 
 from bot.config import Config
 
 LOG = logging.getLogger(__name__)
+
+R = TypeVar('R')
 
 
 def default_exception_handler(ex):
@@ -69,6 +70,7 @@ class ThreadSafeTSConnection:
             except Exception:
                 pass  # may already be closed, doesn't matter.
         self.ts_connection = ts3.query.TS3ServerConnection(self.uri)
+
         if self._keepalive_interval is not None:
             if self._keepalive_job is not None:
                 schedule.cancel_job(self._keepalive_job)  # to avoid accumulating keepalive calls during re-inits
@@ -85,17 +87,17 @@ class ThreadSafeTSConnection:
         self.close()
         return None
 
-    def __del__(self):
-        self.close()
-        return None
+    # def __del__(self):
+    #     self.close()
+    #     return None
 
     def keepalive(self):
         LOG.info(f"Keepalive Ts Connection {self._bot_nickname}")
         self.ts3exec(lambda tc: tc.send_keepalive())
 
     def ts3exec(self,
-                handler: Callable[[TS3ServerConnection], TS3QueryResponse],
-                exception_handler=lambda ex: default_exception_handler(ex)) -> Tuple[TS3Response, Exception]:  # eh = lambda ex: print(ex)):
+                handler: Callable[[TS3ServerConnection], R],
+                exception_handler=lambda ex: default_exception_handler(ex)) -> Tuple[R, Exception]:  # eh = lambda ex: print(ex)):
         """
         Excecutes a query() or exec_() on the internal TS3 connection.
         handler: a function ts3.query.TS3ServerConnection -> any
@@ -147,13 +149,14 @@ class ThreadSafeTSConnection:
             schedule.cancel_job(self._keepalive_job)
 
         # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
-        self.ts_connection.COMMAND_SET = set(self.ts_connection.COMMAND_SET)  # creat copy of frozenset
-        self.ts_connection.COMMAND_SET.add('quit')  # add command
+        if self.ts_connection is not None:
+            self.ts_connection.COMMAND_SET = set(self.ts_connection.COMMAND_SET)  # creat copy of frozenset
+            self.ts_connection.COMMAND_SET.add('quit')  # add command
 
-        self.ts_connection.exec_("quit")  # send quit
-        self.ts_connection.close()  # immediately quit
+            self.ts_connection.exec_("quit")  # send quit
+            self.ts_connection.close()  # immediately quit
 
-        del self.ts_connection
+            del self.ts_connection
 
     def gentleRename(self, nickname):
         """

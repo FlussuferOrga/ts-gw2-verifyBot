@@ -46,8 +46,8 @@ def main():  #
             LOG.info("Connecting to Teamspeak server...")
 
             with ts_connection_pool.item() as main_ts3conn:
-                ts_repository: TS3Facade = TS3Facade(main_ts3conn)
-                bot_instance = Bot(database, ts_connection_pool, main_ts3conn, ts_repository, config)
+                ts_facade: TS3Facade = TS3Facade(main_ts3conn)
+                bot_instance = Bot(database, ts_connection_pool, main_ts3conn, ts_facade, config)
 
                 http_server = server.create_http_server(bot_instance, port=config.ipc_port)
                 http_server.start()
@@ -55,14 +55,12 @@ def main():  #
                 LOG.info("BOT loaded into server (%s) as %s (%s). Nickname '%s'", config.server_id, bot_instance.name, bot_instance.client_id, bot_instance.nickname)
 
                 # Find the verify channel
-                verify_channel = find_verify_channel(ts_repository, config.channel_name)
+                verify_channel = find_verify_channel(ts_facade, config.channel_name)
 
                 # Move ourselves to the Verify chanel and register for text events
-                move_to_channel(main_ts3conn, verify_channel, bot_instance.client_id, config.channel_name)
+                move_to_channel(ts_facade, verify_channel, bot_instance.client_id, config.channel_name)
 
-                main_ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="textchannel"))  # alert channel chat
-                main_ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="textprivate"))  # alert Private chat
-                main_ts3conn.ts3exec(lambda tc: tc.exec_("servernotifyregister", event="server"))
+                ts_facade.server_notify_register(["textchannel", "textprivate", "server"])
 
                 # Send message to the server that the BOT is up
                 # main_ts3conn.exec_("sendtextmessage", targetmode=3, target=server_id, msg=locale.get("bot_msg",(bot_nickname,)))
@@ -139,8 +137,8 @@ def parse_args():
     return parser.parse_args()
 
 
-def move_to_channel(ts3conn, channel: Channel, client_id, channel_name):
-    _, chnl_err = ts3conn.ts3exec(lambda tc: tc.exec_("clientmove", clid=client_id, cid=channel.channel_id))
+def move_to_channel(ts_facade, channel: Channel, client_id, channel_name):
+    chnl_err = ts_facade.client_move(client_id=client_id, channel_id=channel.channel_id)
     if chnl_err:
         LOG.warning("BOT Attempted to join channel '%s' (%s): %s", channel_name, channel.channel_id, chnl_err.resp.error["msg"])
     else:
