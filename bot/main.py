@@ -34,7 +34,7 @@ def main():  #
     database = get_or_create_database(config.db_file_name, config.current_version)
     ts_connection_pool: ConnectionPool[TS3Facade] = ConnectionPool(create=lambda: TS3Facade(create_connection(config, config.bot_nickname)),
                                                                    destroy_function=lambda obj: obj.close(),
-                                                                   max_size=2, max_usage=25, idle=120, ttl=600)
+                                                                   max_size=4, max_usage=25, idle=120, ttl=600)
 
     #######################################
     # Begins the connect to Teamspeak
