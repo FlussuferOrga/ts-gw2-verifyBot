@@ -9,7 +9,7 @@ WORKDIR /app
 COPY . .
 RUN pip install --no-cache-dir .
 
-CMD ["ts-gw2-verifyBot"]
+CMD ["ts-gw2-verify-bot"]
 
 #VOLUME /app/data
 #VOLUME /app/config

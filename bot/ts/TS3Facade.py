@@ -3,6 +3,7 @@ import os
 from typing import List, Tuple
 
 import ts3
+from more_itertools import unique_everseen
 from ts3 import TS3Error
 from ts3.filetransfer import TS3FileTransfer, TS3UploadError
 
@@ -37,8 +38,7 @@ class TS3Facade:
 
     # FIXME: tests
     def channel_info(self, channel_id: int):
-        resp, _ = self._ts3_connection.ts3exec(lambda tsc: tsc.query("channelinfo", cid=channel_id).all())
-        return resp
+        return self._ts3_connection.ts3exec(lambda tsc: tsc.query("channelinfo", cid=channel_id).first(), signal_exception_handler)
 
     # FIXME: tests
     def channel_delete(self, channel_id: int, force: bool = False):
@@ -140,6 +140,20 @@ class TS3Facade:
     def channelgroup_list(self):
         return self._ts3_connection.ts3exec(lambda tsc: tsc.query("channelgrouplist").all(), signal_exception_handler)
 
+    def channelgroup_client_list(self, channelgroup_ids: List[str]):
+        result = []
+        for channel_group_id in channelgroup_ids:
+            channel_group_result, ts3qe = self._ts3_connection.ts3exec(lambda tsc: tsc.query("channelgroupclientlist", cgid=channel_group_id).all(), signal_exception_handler)
+            if ts3qe:  # check for .resp, could be another exception type
+                if ts3qe.resp is not None:
+                    if ts3qe.resp.error["id"] != "1281":
+                        # 1281 is "database empty result set", which is an expected error
+                        # if not a single user currently wears a tag.
+                        raise ts3qe
+            if channel_group_result is not None:
+                result.extend(channel_group_result)
+        return list(unique_everseen(result, key=lambda inner_dict: frozenset(inner_dict.items())))  # removes dublicates
+
     def set_client_channelgroup(self, channel_id: str, channelgroup_id: str, client_db_id: str):
         _, ex = self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("setclientchannelgroup", cgid=channelgroup_id, cid=channel_id, cldbid=client_db_id), signal_exception_handler)
         return ex
@@ -159,6 +173,12 @@ class TS3Facade:
     def client_move(self, client_id: str, channel_id: str):
         _, chnl_err = self._ts3_connection.ts3exec(lambda tc: tc.exec_("clientmove", clid=client_id, cid=channel_id))
         return chnl_err
+
+    def client_get_name_from_uid(self, client_uid: str):
+        return self._ts3_connection.ts3exec(lambda t: t.query("clientgetnamefromuid", cluid=client_uid).first())
+
+    def client_info(self, client_id: str):
+        return self._ts3_connection.ts3exec(lambda t: t.query("clientinfo", clid=client_id).first())[0]
 
 
 class Channel:

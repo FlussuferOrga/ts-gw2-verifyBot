@@ -1,3 +1,4 @@
+from bot.ts import TS3Facade
 from bot.ts.ThreadSafeTSConnection import default_exception_handler
 
 
@@ -9,6 +10,7 @@ class User():
     """
 
     def __init__(self, ts_conn, unique_id=None, ts_db_id=None, client_id=None, ex_hand=None):
+        self._ts_facade = TS3Facade(ts_conn)
         self.ts_conn = ts_conn
         self._unique_id = unique_id
         self._ts_db_id = ts_db_id
@@ -26,10 +28,10 @@ class User():
 
     @property
     def current_channel(self):
-        entry = next((c for c in self.ts_conn.ts3exec(lambda t: t.query("clientlist").all(), self._exception_handler)[0] if c.get("clid") == self.client_id), None)
-        if entry:
-            self._ts_db_id = entry.get("client_database_id")  # since we are already retrieving this information...
-        return Channel(self.ts_conn, entry.get("cid")) if entry else None
+        client_info = self._ts_facade.client_info(client_id=self.client_id)
+        if client_info:
+            self._ts_db_id = client_info.get("client_database_id")  # since we are already retrieving this information...
+        return Channel(self.ts_conn, client_info.get("cid")) if client_info else None
 
     @property
     def name(self):

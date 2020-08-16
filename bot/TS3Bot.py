@@ -57,7 +57,8 @@ class Bot:
     # Helps find the group ID for a group name
     def groupFind(self, group_to_find):
         with self._ts_connection_pool.item() as ts_connection:
-            self.groups_list, _ = ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergrouplist").all())
+            ts_facade = TS3Facade(ts_connection)
+            self.groups_list = ts_facade.servergroup_list()
         for group in self.groups_list:
             if group.get('name') == group_to_find:
                 return group.get('sgid')
@@ -67,9 +68,9 @@ class Bot:
         client_db_id = self.getTsDatabaseID(unique_client_id)
 
         with self._ts_connection_pool.item() as ts_connection:
+            ts_facade = TS3Facade(ts_connection)
             # Check if user is in verified group
-            if any(perm_grp.get('name') == self.verified_group for perm_grp in
-                   ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all())[0]):
+            if any(perm_grp.get('name') == self.verified_group for perm_grp in ts_facade.servergroup_list_by_client(client_db_id)[0]):
                 return False  # User already verified
 
         # Check if user is authenticated in database and if so, re-adds them to the group
@@ -87,7 +88,8 @@ class Bot:
             LOG.debug("Adding Permissions: CLUID [%s] SGID: %s   CLDBID: %s", unique_client_id, self.vgrp_id, client_db_id)
             # Add user to group
             with self._ts_connection_pool.item() as ts_connection:
-                _, ex = ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupaddclient", sgid=self.vgrp_id, cldbid=client_db_id))
+                facade = TS3Facade(ts_connection)
+                ex = facade.servergroup_client_add(servergroup_id=self.vgrp_id, client_db_id=client_db_id)
                 if ex:
                     LOG.error("Unable to add client to '%s' group. Does the group exist?", self.verified_group)
         except ts3.query.TS3QueryError as err:
@@ -99,18 +101,19 @@ class Bot:
             LOG.debug("Removing Permissions: CLUID [%s] SGID: %s   CLDBID: %s", unique_client_id, self.vgrp_id, client_db_id)
 
             with self._ts_connection_pool.item() as ts_connection:
+                ts_facade = TS3Facade(ts_connection)
                 # Remove user from group
-                _, ex = ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=self.vgrp_id, cldbid=client_db_id), signal_exception_handler)
+                ex = ts_facade.servergroup_client_del(servergroup_id=self.vgrp_id, client_db_id=client_db_id)
                 if ex:
                     LOG.error("Unable to remove client from '%s' group. Does the group exist and are they member of the group?", self.verified_group)
                 # Remove users from all groups, except the whitelisted ones
                 if self._config.purge_completely:
                     # FIXME: remove channel groups as well
-                    assigned_groups, ex = self.ts_connection.ts3exec(lambda ts_connection: ts_connection.query("servergroupsbyclientid", cldbid=client_db_id).all())
+                    assigned_groups = ts_facade.servergroup_list_by_client(client_db_id)
                     if assigned_groups is not None:
                         for g in assigned_groups:
                             if g.get("name") not in self._config.purge_whitelist:
-                                ts_connection.ts3exec(lambda ts_connection: ts_connection.exec_("servergroupdelclient", sgid=g.get("sgid"), cldbid=client_db_id), lambda ex: None)
+                                ts_facade.servergroup_client_del(servergroup_id=g.get("sgid"), client_db_id=client_db_id)
         except TS3QueryError as err:
             LOG.error("Removing permissions failed: %s", err)  # likely due to bad client id
 
@@ -444,6 +447,8 @@ class Bot:
 
             # Type 1 means it was a private message
             elif rec_type == '1':
+                info = self._ts_repository.client_info(rec_from_id)
+
                 # reg_api_auth='\s*(\S+\s*\S+\.\d+)\s+(.*?-.*?-.*?-.*?-.*)\s*$'
                 reg_api_auth = r'\s*(.*?-.*?-.*?-.*?-.*)\s*$'
 
