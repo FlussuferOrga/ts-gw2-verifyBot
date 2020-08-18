@@ -20,7 +20,7 @@ class TS3Facade:
     def close(self):
         self._ts3_connection.close()
 
-    def isConnected(self):
+    def is_connected(self):
         return self._ts3_connection.ts3exec(lambda tc: tc.is_connected(), signal_exception_handler)[0]
 
     def wait_for_event(self, timeout: int):

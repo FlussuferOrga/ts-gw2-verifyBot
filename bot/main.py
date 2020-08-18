@@ -99,7 +99,7 @@ def main():  #
 
                 # Forces script to loop forever while we wait for events to come in, unless connection timed out. Then it should loop a new bot into creation.
                 LOG.info("BOT now idle, waiting for requests.")
-                while ts_facade.isConnected():
+                while ts_facade.is_connected():
                     # auditjob + keepalive check
                     schedule.run_pending()
                     event: TS3Response

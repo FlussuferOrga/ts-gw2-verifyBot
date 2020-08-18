@@ -71,6 +71,10 @@ class ThreadSafeTSConnection:
                 pass  # may already be closed, doesn't matter.
         self.ts_connection = ts3.query.TS3ServerConnection(self.uri)
 
+        # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
+        self.ts_connection.COMMAND_SET = set(self.ts_connection.COMMAND_SET)  # creat copy of frozenset
+        self.ts_connection.COMMAND_SET.add('quit')  # add command
+
         if self._keepalive_interval is not None:
             if self._keepalive_job is not None:
                 schedule.cancel_job(self._keepalive_job)  # to avoid accumulating keepalive calls during re-inits
@@ -146,12 +150,8 @@ class ThreadSafeTSConnection:
 
         # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
         if self.ts_connection is not None:
-            self.ts_connection.COMMAND_SET = set(self.ts_connection.COMMAND_SET)  # creat copy of frozenset
-            self.ts_connection.COMMAND_SET.add('quit')  # add command
-
             self.ts_connection.exec_("quit")  # send quit
             self.ts_connection.close()  # immediately quit
-
             del self.ts_connection
 
     def gentleRename(self, nickname):
