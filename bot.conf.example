@@ -137,10 +137,12 @@ reset_ebg_channel = ('ebg','EBG:')
 
 [guilds]
 guilds_parent_channel = Guilds
-guild_sub_channels = ["Lobby", "Raids"]
-guild_contact_channel_group = Guild Contact
+guild_sub_channels = ('Lobby', 'Raids')
+guild_contact_channel_group = Gilden Ansprechpartner
+minimum_talk_power = 50
 maximum_talk_power = 90
-guild_sort_id = 1100
+minimum_sort_order = 100
+guild_sort_id=1100
 
 #######################################
 
