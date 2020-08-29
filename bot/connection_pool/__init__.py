@@ -30,6 +30,10 @@ class IdleExceeded(Expired):
     """Idle time exceeds the time specified by idle"""
 
 
+class Unhealthy(Expired):
+    """Connection was unhealthy"""
+
+
 T = TypeVar('T')
 
 
@@ -77,13 +81,17 @@ class ConnectionPool(Generic[T]):
     __wrappers = {}
 
     def __init__(self,
-                 create: Callable[[], T], destroy_function: Callable[[T], None] = None,
+                 create: Callable[[], T],
+                 destroy_function: Callable[[T], None] = None,
+                 test_function: Callable[[T], bool] = None,
                  max_size: int = 10, max_usage: int = 0,
                  ttl: int = 0, idle: int = 60,
                  block: bool = True) -> None:
         """Initialization parameters
 
             create: must be a callback function
+            destroy_function: optional, called on destruction
+            test_function: optional, called on returning the connection to the pool to test availability
             max_size: The maximum number of connections. When it is 0, there is no limit. It is not recommended to set it to 0
             max_usage: the number of times the connection can be used, after reaching this number, the connection will be released/closed
             ttl: connection life time, unit (seconds), when the connection reaches the specified time, the connection will be released/closed
@@ -95,6 +103,7 @@ class ConnectionPool(Generic[T]):
 
         self._create = create
         self._destroy_function = destroy_function
+        self._test_function = test_function
         self._max_size = int(max_size)
         self._max_usage = int(max_usage)
         self._ttl = int(ttl)
@@ -189,3 +198,6 @@ class ConnectionPool(Generic[T]):
 
         if self._idle and (wrapped.last + self._idle) < time.time():
             raise IdleExceeded('Idle exceeds %d secs' % self._idle)
+
+        if self._test_function and not self._test_function(wrapped.connection):
+            raise Unhealthy('Connection test determined that the connection is not healthy')
