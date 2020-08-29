@@ -32,9 +32,8 @@ def main():  #
 
     config = Config(args.config_path)
     database = get_or_create_database(config.db_file_name, config.current_version)
-    ts_connection_pool: ConnectionPool[TS3Facade] = ConnectionPool(create=lambda: TS3Facade(create_connection(config, config.bot_nickname)),
-                                                                   destroy_function=lambda obj: obj.close(),
-                                                                   max_size=4, max_usage=25, idle=120, ttl=600)
+
+    ts_connection_pool: ConnectionPool[TS3Facade] = create_connection_pool(config)
 
     #######################################
     # Begins the connect to Teamspeak
@@ -127,6 +126,13 @@ def main():  #
             LOG.info("Stopping...")
             http_server.stop()
             sys.exit(0)
+
+
+def create_connection_pool(config):
+    return ConnectionPool(create=lambda: TS3Facade(create_connection(config, config.bot_nickname)),
+                          destroy_function=lambda obj: obj.close(),
+                          max_size=config.pool_size,
+                          max_usage=config.pool_max_usage, idle=config.pool_tti, ttl=config.pool_ttl)
 
 
 def parse_args():

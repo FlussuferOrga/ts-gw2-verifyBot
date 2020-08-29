@@ -12,13 +12,18 @@ class Config:
         self.current_version = "1.5"
 
         configs = configparser.ConfigParser()
-        configs.read(config_file_path)
+        configs.read(config_file_path, "utf-8")
 
         # Teamspeak Connection Settings
         self.host = configs.get("teamspeak connection settings", "host")
         self.port = configs.get("teamspeak connection settings", "port")
         self.user = configs.get("teamspeak connection settings", "user")
         self.passwd = configs.get("teamspeak connection settings", "passwd")
+
+        self.pool_size = self._try_get(configs, "teamspeak connection settings", "pool_size", 4)
+        self.pool_ttl = self._try_get(configs, "teamspeak connection settings", "pool_ttl", 600)
+        self.pool_tti = self._try_get(configs, "teamspeak connection settings", "pool_tti", 120)
+        self.pool_max_usage = self._try_get(configs, "teamspeak connection settings", "pool_max_usage", 25)
 
         # Teamspeak Other Settings
         self.server_id = configs.get("teamspeak other settings", "server_id")
