@@ -248,22 +248,27 @@ class Bot:
             LOG.debug("Audit: User %s", audit_account_name)
             LOG.debug("TODAY |%s|  NEXT AUDIT |%s|", self.c_audit_date, audit_last_audit_date + datetime.timedelta(days=self._config.audit_period))
 
-            # compare audit date
-            if self.c_audit_date >= audit_last_audit_date + datetime.timedelta(days=self._config.audit_period):
-                LOG.info("User %s is due for auditing!", audit_account_name)
-                auth = AuthRequest(audit_api_key, self._config.required_servers, int(self._config.required_level), audit_account_name)
-                if auth.success:
-                    LOG.info("User %s is still on %s. Succesful audit!", audit_account_name, auth.world.get("name"))
-                    # self.getTsDatabaseID(audit_ts_id)
-                    with self._ts_connection_pool.item() as ts_facade:
-                        self.updateGuildTags(ts_facade, User(ts_facade, unique_id=audit_ts_id), auth)
-                    with self._database_connection.lock:
-                        self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", (self.c_audit_date, audit_ts_id,))
-                        self._database_connection.conn.commit()
-                else:
-                    LOG.info("User %s is no longer on our server. Removing access....", audit_account_name)
-                    self.removePermissions(audit_ts_id)
-                    self.removeUserFromDB(audit_ts_id)
+            ts_uuid = self._ts_facade.client_db_id_from_uid(audit_ts_id)
+            if ts_uuid is None:
+                LOG.info("User %s is not found in TS DB and could be deleted.", audit_account_name)
+                # self.removeUserFromDB(audit_ts_id)
+            else:
+                # compare audit date
+                if self.c_audit_date >= audit_last_audit_date + datetime.timedelta(days=self._config.audit_period):
+                    LOG.info("User %s is due for auditing!", audit_account_name)
+                    auth = AuthRequest(audit_api_key, self._config.required_servers, int(self._config.required_level), audit_account_name)
+                    if auth.success:
+                        LOG.info("User %s is still on %s. Succesful audit!", audit_account_name, auth.world.get("name"))
+                        # self.getTsDatabaseID(audit_ts_id)
+                        with self._ts_connection_pool.item() as ts_facade:
+                            self.updateGuildTags(ts_facade, User(ts_facade, unique_id=audit_ts_id), auth)
+                        with self._database_connection.lock:
+                            self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", (self.c_audit_date, audit_ts_id,))
+                            self._database_connection.conn.commit()
+                    else:
+                        LOG.info("User %s is no longer on our server. Removing access....", audit_account_name)
+                        self.removePermissions(audit_ts_id)
+                        self.removeUserFromDB(audit_ts_id)
 
         with self._database_connection.lock:
             self._database_connection.cursor.execute('INSERT INTO bot_info (last_succesful_audit) VALUES (?)', (self.c_audit_date,))

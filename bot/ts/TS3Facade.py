@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import ts3
 from ts3 import TS3Error
@@ -191,8 +191,16 @@ class TS3Facade:
     def client_info(self, client_id: str):
         return self._ts3_connection.ts3exec(lambda t: t.query("clientinfo", clid=client_id).first())[0]
 
-    def client_db_id_from_uid(self, client_uid):
-        return self._ts3_connection.ts3exec(lambda t: t.query("clientgetdbidfromuid", cluid=client_uid).first().get("cldbid"))[0]
+    def client_db_id_from_uid(self, client_uid) -> Optional[str]:
+        response, ex = self._ts3_connection.ts3exec(lambda t: t.query("clientgetdbidfromuid", cluid=client_uid).first().get("cldbid"), exception_handler=signal_exception_handler)
+        if ex is None:
+            return response
+        else:
+            if hasattr(ex, "resp") and ex.resp is not None:
+                if ex.resp.error["id"] != "512":
+                    # user not found
+                    return None
+        raise ex
 
     def client_ids_from_uid(self, client_uid):
         return self._ts3_connection.ts3exec(lambda t: t.query("clientgetids", cluid=client_uid).all())[0]
