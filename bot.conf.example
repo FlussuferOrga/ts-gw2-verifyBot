@@ -17,6 +17,16 @@ port = 10011
 user = serveradmin
 passwd = xxxxxxx
 
+## Pool Settings
+# Maximum connections in the pool. Should be >= 2
+pool_size = 4
+# Connection time to live, checked when returned to the pool
+pool_ttl = 600
+# Connection time to idle, checked when returned to the pool
+pool_tti = 120
+# Number of uses after a connection will be destroyed
+pool_max_usage = 5
+
 #######################################
 
 #######################################

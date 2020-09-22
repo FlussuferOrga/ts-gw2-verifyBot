@@ -8,12 +8,12 @@ class User():
     by only resolving properties when they are actually needed and then caching them (if sensible).
     """
 
-    def __init__(self, ts_conn, unique_id=None, ts_db_id=None, client_id=None, ex_hand=None):
-        self.ts_conn = ts_conn
+    def __init__(self, ts_facade, unique_id=None, ts_db_id=None, client_id=None):
+        self._ts_facade = ts_facade
         self._unique_id = unique_id
         self._ts_db_id = ts_db_id
         self._client_id = client_id
-        self._exception_handler = ex_hand if ex_hand is not None else default_exception_handler
+        self._exception_handler = default_exception_handler
 
         if all(x is None for x in [unique_id, ts_db_id, client_id]):
             raise ValueError("At least one ID must be non-null")
@@ -26,24 +26,24 @@ class User():
 
     @property
     def current_channel(self):
-        entry = next((c for c in self.ts_conn.ts3exec(lambda t: t.query("clientlist").all(), self._exception_handler)[0] if c.get("clid") == self.client_id), None)
-        if entry:
-            self._ts_db_id = entry.get("client_database_id")  # since we are already retrieving this information...
-        return Channel(self.ts_conn, entry.get("cid")) if entry else None
+        client_info = self._ts_facade.client_info(client_id=self.client_id)
+        if client_info:
+            self._ts_db_id = client_info.get("client_database_id")  # since we are already retrieving this information...
+        return Channel(client_info.get("cid")) if client_info else None
 
     @property
     def name(self):
-        return self.ts_conn.ts3exec(lambda t: t.query("clientgetids", cluid=self.unique_id).first().get("name"), self._exception_handler)[0]
+        return self._ts_facade.client_get_name_from_uid(client_uid=self._unique_id)[0].get("name")
 
     @property
     def unique_id(self):
         if self._unique_id is None:
             if self._ts_db_id is not None:
-                self._unique_id, ex = self.ts_conn.ts3exec(lambda t: t.query("clientgetnamefromdbid", cldbid=self._ts_db_id).first().get("cluid"), self._exception_handler)
+                self._unique_id = self._ts_facade.client_get_name_from_dbid(self._ts_db_id).get("cluid")
             elif self._client_id is not None:
-                ids, ex = self.ts_conn.ts3exec(lambda t: t.query("clientinfo", clid=self._client_id).first(), self._exception_handler)
-                self._unique_id = ids.get("client_unique_identifier")
-                self._ts_db_id = ids.get("client_databased_id")  # not required, but since we already queried it...
+                client_info = self._ts_facade.client_info(client_id=self._client_id)
+                self._unique_id = client_info.get("client_unique_identifier")
+                self._ts_db_id = client_info.get("client_databased_id")  # not required, but since we already queried it...
             else:
                 raise ValueError("Unique ID can not be retrieved")
         return self._unique_id
@@ -52,9 +52,9 @@ class User():
     def ts_db_id(self):
         if self._ts_db_id is None:
             if self._unique_id is not None:
-                self._ts_db_id, ex = self.ts_conn.ts3exec(lambda t: t.query("clientgetdbidfromuid", cluid=self._unique_id).first().get("cldbid"), self._exception_handler)
+                self._ts_db_id = self._ts_facade.client_db_id_from_uid(self._unique_id)
             elif self._client_id is not None:
-                ids, ex = self.ts_conn.ts3exec(lambda t: t.query("clientinfo", clid=self._client_id).first(), self._exception_handler)
+                ids = self._ts_facade.client_info(client_id=self._client_id)
                 self._unique_id = ids.get("client_unique_identifier")  # not required, but since we already queried it...
                 self._ts_db_id = ids.get("client_database_id")
             else:
@@ -66,16 +66,15 @@ class User():
         if self._client_id is None:
             if self._unique_id is not None:
                 # easiest case: unique ID is set
-                self._client_id, ex = self.ts_conn.ts3exec(lambda t: t.query("clientgetids", cluid=self._unique_id).first().get("clid"), self._exception_handler)
+                self._client_id = self._ts_facade.client_ids_from_uid(client_uid=self._unique_id)[0].get("clid")  # use first and hope for the best.
             elif self._ts_db_id is not None:
-                self._unique_id, ex = self.ts_conn.ts3exec(lambda t: t.query("clientgetnamefromdbid", cldbid=self._ts_db_id).first().get("cluid"), self._exception_handler)
-                self._client_id, ex = self.ts_conn.ts3exec(lambda t: t.query("clientgetids", cluid=self._unique_id).first().get("clid"), self._exception_handler)
+                self._unique_id = self._ts_facade.client_get_name_from_dbid(client_dbid=self._ts_db_id).get("cluid")
+                self._client_id = self._ts_facade.client_ids_from_uid(client_uid=self._unique_id)[0].get("clid")  # use first and hope for the best.
             else:
                 raise ValueError("Client ID can not be retrieved")
         return self._client_id
 
 
 class Channel:
-    def __init__(self, ts_conn, channel_id):
-        self.ts_conn = ts_conn
+    def __init__(self, channel_id):
         self.channel_id = channel_id

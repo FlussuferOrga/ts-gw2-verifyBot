@@ -1,52 +1,19 @@
 import logging
-import os
 import urllib
 
 import binascii
 import requests
-import ts3
-from ts3 import TS3Error
-from ts3.filetransfer import TS3FileTransfer, TS3UploadError
 
 import bot.gwapi as gw2api
 from bot.config import Config
+from bot.connection_pool import ConnectionPool
 from bot.db import ThreadSafeDBConnection
-from bot.ts import TS3Facade, ThreadSafeTSConnection, User, default_exception_handler, signal_exception_handler
+from bot.ts import TS3Facade, User
 
 LOG = logging.getLogger(__name__)
 
 
-def upload_icon(icon, icon_file_name, icon_server_path, ts3conn):
-    def _ts_file_upload_hook(ts3_response: ts3.response.TS3QueryResponse):
-        if ts3_response is not None:
-            if ts3_response.parsed is not None and len(ts3_response.parsed) == 1 and ts3_response.parsed[0] is not None:
-                if "msg" in ts3_response.parsed[0].keys() and ts3_response.parsed[0]["msg"] == "invalid size":
-                    raise TS3UploadError(0, "The uploaded Icon is too large")
-
-    with open(icon_file_name, "w+b") as file_handle:
-        try:
-            # svg
-            file_handle.write(icon.content)
-            file_handle.flush()
-            file_handle.seek(0)
-
-            # it is important to have acquired the lock for the ts3conn globally
-            # at this point, as we directly pass the wrapped connection around
-            upload = TS3FileTransfer(ts3conn.ts_connection)
-            _ = upload.init_upload(input_file=file_handle,
-                                   name=icon_server_path,
-                                   cid=0,
-                                   query_resp_hook=_ts_file_upload_hook)
-            LOG.info(f"Icon {icon_file_name} uploaded as {icon_server_path}.")
-        except TS3Error as ts3error:
-            LOG.error("Error Uploading icon %s.", icon_file_name)
-            LOG.error(ts3error)
-        finally:
-            file_handle.close()
-            os.remove(icon_file_name)
-
-
-def _handle_guild_icon(name, ts3conn):
+def _handle_guild_icon(name, ts3_facade):
     #########################################
     # RETRIEVE AND UPLOAD GUILD EMBLEM ICON #
     #########################################
@@ -62,19 +29,16 @@ def _handle_guild_icon(name, ts3conn):
     if len(icon.content) > 0:
         icon_id = binascii.crc32(name.encode('utf8'))
 
-        icon_local_file_name = "%s_icon.svg" % (urllib.parse.quote(name),)  # using name instead of tag, because tags are not unique
-        icon_server_path = "/icon_%s" % (icon_id,)
-        upload_icon(icon, icon_local_file_name, icon_server_path, ts3conn)
+        ts3_facade.upload_icon(icon_id, icon.content)
         return icon_id
     LOG.debug("Empty Response. Guild probably has no icon. Skipping Icon upload.")
     return None
 
 
 class GuildService:
-    def __init__(self, database: ThreadSafeDBConnection, ts_repository: TS3Facade, ts_connection: ThreadSafeTSConnection, config: Config):
+    def __init__(self, database: ThreadSafeDBConnection, ts_connection_pool: ConnectionPool[TS3Facade], config: Config):
         self._database = database
-        self._ts_repository = ts_repository
-        self._ts_connection = ts_connection
+        self.ts_connection_pool = ts_connection_pool
         self._config = config
 
     def create_guild(self, name, group_name, contacts):
@@ -123,168 +87,147 @@ class GuildService:
 
         LOG.info("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'.", guild_name, guild_tag, group_name, ", ".join(contacts))
 
-        ts3conn = self._ts_connection
-        # lock for the whole block to avoid constant interference
-        # locking the ts3conn is vital to properly do the TS3FileTransfer
-        # down the line.
-        with ts3conn.lock, self._database.lock:
-            #############################################
-            # CHECK IF GROUPS OR CHANNELS ALREADY EXIST #
-            #############################################
-            LOG.debug("Doing preliminary checks.")
-            groups = self._ts_repository.servergroup_list()
-            group = next((g for g in groups if g.get("name") == group_name), None)
-            if group is not None:
-                # group already exists!
-                LOG.debug("Can not create a group '%s', because it already exists. Aborting guild creation.", group)
-                return DUPLICATE_TS_GROUP
-
+        with self.ts_connection_pool.item() as ts_facade:
+            # lock for the whole block to avoid constant interference
+            # locking the ts3conn is vital to properly do the TS3FileTransfer
+            # down the line.
             with self._database.lock:
-                dbgroups = self._database.cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group = ?", (group_name,)).fetchall()
-                if len(dbgroups) > 0:
-                    LOG.debug("Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation.", group_name)
-                    return DUPLICATE_DB_ENTRY
+                #############################################
+                # CHECK IF GROUPS OR CHANNELS ALREADY EXIST #
+                #############################################
+                LOG.debug("Doing preliminary checks.")
+                groups = ts_facade.servergroup_list()
+                group = next((g for g in groups if g.get("name") == group_name), None)
+                if group is not None:
+                    # group already exists!
+                    LOG.debug("Can not create a group '%s', because it already exists. Aborting guild creation.", group)
+                    return DUPLICATE_TS_GROUP
 
-            channel = self._ts_repository.channel_find(channel_name)
-            if channel is not None:
-                # channel already exists!
-                LOG.debug("Can not create a channel '%s', as it already exists. Aborting guild creation.", channel_name)
-                return DUPLICATE_TS_CHANNEL
-
-            parent = self._ts_repository.channel_find(self._config.guilds_parent_channel)
-            if parent is None:
-                # parent channel does not exist!
-                LOG.debug("Can not find a parent-channel '%s' for guilds. Aborting guild creation.", self._config.guilds_parent_channel)
-                return MISSING_PARENT_CHANNEL
-
-            LOG.debug("Checks complete.")
-
-            # Icon uploading
-            icon_id = _handle_guild_icon(guild_name, ts3conn)  # Returns None if no icon
-
-            ##################################
-            # CREATE CHANNEL AND SUBCHANNELS #
-            ##################################
-            LOG.debug("Creating guild channels...")
-            pid = parent.channel_id
-            info, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelinfo", cid=pid).all(), signal_exception_handler)
-            # assert channel and group both exist and parent channel is available
-            all_guild_channels = [c for c in ts3conn.ts3exec(lambda tc: tc.query("channellist").all(), signal_exception_handler)[0] if c.get("pid") == pid]
-            all_guild_channels.sort(key=lambda c: c.get("channel_name"), reverse=True)
-
-            # Assuming the channels are already in order on the server,
-            # find the first channel whose name is alphabetically smaller than the new channel name.
-            # The sort_order of channels actually specifies after which channel they should be
-            # inserted. Giving 0 as sort_order puts them in first place after the parent.
-            found_place = False
-            sort_order = 0
-            i = 0
-            while i < len(all_guild_channels) and not found_place:
-                if all_guild_channels[i].get("channel_name") > channel_name:
-                    i += 1
-                else:
-                    sort_order = int(all_guild_channels[i].get("cid"))
-                    found_place = True
-
-            cinfo, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate",
-                                                              channel_name=channel_name,
-                                                              channel_description=channel_description,
-                                                              cpid=pid,
-                                                              channel_flag_permanent=1,
-                                                              channel_maxclients=0,
-                                                              channel_order=sort_order,
-                                                              channel_flag_maxclients_unlimited=0)
-                                        .first(), signal_exception_handler)
-
-            guild_channel_perms = [
-                ("i_channel_needed_join_power", 25),
-                ("i_channel_needed_subscribe_power", 25),
-                ("i_channel_needed_modify_power", 45),
-                ("i_channel_needed_delete_power", 75)
-            ]
-
-            perms = guild_channel_perms.copy()
-            if icon_id is not None:
-                perms.append(("i_icon_id", icon_id))
-
-            def channel_apply_permissions(cid, perms):
-                for p, v in perms:
-                    _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("channeladdperm", cid=cid, permsid=p, permvalue=v, permnegated=0, permskip=0),
-                                            signal_exception_handler)
-
-            channel_apply_permissions(cinfo.get("cid"), perms)
-
-            for c in self._config.guild_sub_channels:
-                # FIXME: error check
-                sub_channel_info, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelcreate", channel_name=c, cpid=cinfo.get("cid"), channel_flag_permanent=1)
-                                                       .first(), signal_exception_handler)
-                channel_apply_permissions(sub_channel_info.get("cid"), guild_channel_perms)
-
-        ###################
-        # CREATE DB GROUP #
-        ###################
-        # must exist in DB before creating group to have it available when reordering groups.
-        LOG.debug("Creating entry in database for auto assignment of guild group...")
-        with self._database.lock:
-            self._database.cursor.execute("INSERT INTO guilds(ts_group, guild_name) VALUES(?,?)", (group_name, guild_name))
-            self._database.conn.commit()
-
-        #######################
-        # CREATE SERVER GROUP #
-        #######################
-        LOG.debug("Creating and configuring server group...")
-        resp, ex = ts3conn.ts3exec(lambda tsc: tsc.query("servergroupadd", name=group_name).first(), signal_exception_handler)
-        guildgroupid = resp.get("sgid")
-        if ex is not None and ex.resp.error["id"] == "1282":
-            LOG.warning("Duplication error while trying to create the group '%s' for the guild %s [%s].", group_name, guild_name, guild_tag)
-
-        def servergroupaddperm(sgid, permsid, permvalue):
-            return ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddperm",
-                                                         sgid=sgid,
-                                                         permsid=permsid,
-                                                         permvalue=permvalue,
-                                                         permnegated=0,
-                                                         permskip=0),
-                                   signal_exception_handler)
-
-        perms = self._create_guild_channel_permissions(icon_id, perms)
-
-        for p, v in perms:
-            _, _ = servergroupaddperm(guildgroupid, p, v)
-
-        groups.append({"sgid": resp.get("sgid"), "name": group_name})  # the newly created group has to be added to properly iterate over the guild groups
-        self._sort_guild_groups_using_talk_power(groups, servergroupaddperm)
-
-        ################
-        # ADD CONTACTS #
-        ################
-        LOG.debug("Adding contacts...")
-        cgroups, ex = ts3conn.ts3exec(lambda tsc: tsc.query("channelgrouplist").all(), default_exception_handler)
-        contactgroup = next((cg for cg in cgroups if cg.get("name") == self._config.guild_contact_channel_group), None)
-        if contactgroup is None:
-            LOG.debug("Can not find a group for guild contacts. Skipping.")
-        else:
-            for c in contacts:
                 with self._database.lock:
-                    accs = [row[0] for row in self._database.cursor.execute("SELECT ts_db_id FROM users WHERE lower(account_name) = lower(?)", (c,)).fetchall()]
-                    for acc in accs:
-                        try:
-                            user = User(ts3conn, unique_id=acc, ex_hand=signal_exception_handler)
-                            _, ex = ts3conn.ts3exec(lambda tsc: tsc.exec_("setclientchannelgroup", cid=cinfo.get("cid"), cldbid=user.ts_db_id, cgid=contactgroup.get("cgid")),
-                                                    signal_exception_handler)
-                            # while we are at it, add the contacts to the guild group as well
-                            _, ex2 = ts3conn.ts3exec(lambda tsc: tsc.exec_("servergroupaddclient", sgid=guildgroupid, cldbid=user.ts_db_id), signal_exception_handler)
+                    dbgroups = self._database.cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group = ?", (group_name,)).fetchall()
+                    if len(dbgroups) > 0:
+                        LOG.debug("Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation.", group_name)
+                        return DUPLICATE_DB_ENTRY
 
-                            errored = ex is not None
-                        except Exception:
-                            errored = True
-                        if errored:
-                            LOG.error("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in "
-                                      "guild channel for %s. Maybe the uid is not valid anymore.",
-                                      self._config.guild_contact_channel_group, c, acc, guild_name)
-        return SUCCESS
+                channel = ts_facade.channel_find(channel_name)
+                if channel is not None:
+                    # channel already exists!
+                    LOG.debug("Can not create a channel '%s', as it already exists. Aborting guild creation.", channel_name)
+                    return DUPLICATE_TS_CHANNEL
 
-    def _create_guild_channel_permissions(self, icon_id, perms):
+                parent = ts_facade.channel_find(self._config.guilds_parent_channel)
+                if parent is None:
+                    # parent channel does not exist!
+                    LOG.debug("Can not find a parent-channel '%s' for guilds. Aborting guild creation.", self._config.guilds_parent_channel)
+                    return MISSING_PARENT_CHANNEL
+
+                LOG.debug("Checks complete.")
+
+                # Icon uploading
+                icon_id = _handle_guild_icon(guild_name, ts_facade)  # Returns None if no icon
+
+                ##################################
+                # CREATE CHANNEL AND SUBCHANNELS #
+                ##################################
+                LOG.debug("Creating guild channels...")
+                channel_list, _ = ts_facade.channel_list()
+
+                # assert channel and group both exist and parent channel is available
+                all_guild_channels = [c for c in channel_list if c.get("pid") == parent.channel_id]
+                all_guild_channels.sort(key=lambda c: c.get("channel_name"), reverse=True)
+
+                # Assuming the channels are already in order on the server,
+                # find the first channel whose name is alphabetically smaller than the new channel name.
+                # The sort_order of channels actually specifies after which channel they should be
+                # inserted. Giving 0 as sort_order puts them in first place after the parent.
+                found_place = False
+                sort_order = 0
+                i = 0
+                while i < len(all_guild_channels) and not found_place:
+                    if all_guild_channels[i].get("channel_name") > channel_name:
+                        i += 1
+                    else:
+                        sort_order = int(all_guild_channels[i].get("cid"))
+                        found_place = True
+
+                cinfo, ex = ts_facade.channel_create(channel_name=channel_name,
+                                                     channel_description=channel_description,
+                                                     channel_parent_id=parent.channel_id,
+                                                     channel_maxclients=0,
+                                                     channel_order=sort_order)
+
+                guild_channel_perms = [
+                    ("i_channel_needed_join_power", 25),
+                    ("i_channel_needed_subscribe_power", 25),
+                    ("i_channel_needed_modify_power", 45),
+                    ("i_channel_needed_delete_power", 75)
+                ]
+
+                perms = guild_channel_perms.copy()
+                if icon_id is not None:
+                    perms.append(("i_icon_id", icon_id))
+
+                ts_facade.channel_add_permissions(cinfo.get("cid"), perms)
+
+                for c in self._config.guild_sub_channels:
+                    # FIXME: error check
+                    sub_channel_info, ex = ts_facade.channel_create(channel_name=c, channel_parent_id=cinfo.get("cid"))
+                    ts_facade.channel_add_permissions(sub_channel_info.get("cid"), guild_channel_perms)
+
+            ###################
+            # CREATE DB GROUP #
+            ###################
+            # must exist in DB before creating group to have it available when reordering groups.
+            LOG.debug("Creating entry in database for auto assignment of guild group...")
+            with self._database.lock:
+                self._database.cursor.execute("INSERT INTO guilds(ts_group, guild_name) VALUES(?,?)", (group_name, guild_name))
+                self._database.conn.commit()
+
+            #######################
+            # CREATE SERVER GROUP #
+            #######################
+            LOG.debug("Creating and configuring server group...")
+            resp, ex = ts_facade.servergroup_add(group_name)
+            if ex is not None and ex.resp.error["id"] == "1282":
+                LOG.warning("Duplication error while trying to create the group '%s' for the guild %s [%s].", group_name, guild_name, guild_tag)
+
+            guild_servergroup_id = resp.get("sgid")
+
+            servergroup_permissions = self._create_guild_servergroup_permissions(icon_id)
+            ts_facade.servergroup_add_permissions(guild_servergroup_id, servergroup_permissions)
+
+            groups.append({"sgid": resp.get("sgid"), "name": group_name})  # the newly created group has to be added to properly iterate over the guild groups
+            self._sort_guild_groups_using_talk_power(groups, ts_facade)
+
+            ################
+            # ADD CONTACTS #
+            ################
+            LOG.debug("Adding contacts...")
+            cgroups, _ = ts_facade.channelgroup_list()
+            contactgroup = next((cg for cg in cgroups if cg.get("name") == self._config.guild_contact_channel_group), None)
+            if contactgroup is None:
+                LOG.debug("Can not find a group for guild contacts. Skipping.")
+            else:
+                for c in contacts:
+                    with self._database.lock:
+                        accs = [row[0] for row in self._database.cursor.execute("SELECT ts_db_id FROM users WHERE lower(account_name) = lower(?)", (c,)).fetchall()]
+                        for acc in accs:
+                            try:
+                                user = User(ts_facade, unique_id=acc)
+                                ex = ts_facade.set_client_channelgroup(channel_id=cinfo.get("cid"), channelgroup_id=contactgroup.get("cgid"), client_db_id=user.ts_db_id)
+                                # while we are at it, add the contacts to the guild group as well
+                                ts_facade.servergroup_client_add(servergroup_id=guild_servergroup_id, client_db_id=user.ts_db_id)
+
+                                errored = ex is not None
+                            except Exception:
+                                errored = True
+                            if errored:
+                                LOG.error("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in "
+                                          "guild channel for %s. Maybe the uid is not valid anymore.",
+                                          self._config.guild_contact_channel_group, c, acc, guild_name)
+            return SUCCESS
+
+    def _create_guild_servergroup_permissions(self, icon_id):
         perms = [
             ("b_group_is_permanent", 1),
             ("i_group_show_name_in_tree", 1),
@@ -297,7 +240,7 @@ class GuildService:
             perms.append(("i_icon_id", icon_id))
         return perms
 
-    def _sort_guild_groups_using_talk_power(self, groups, servergroupaddperm):
+    def _sort_guild_groups_using_talk_power(self, groups, ts_facade):
         with self._database.lock:
             guildgroups = [g[0] for g in self._database.cursor.execute("SELECT ts_group FROM guilds ORDER BY ts_group").fetchall()]
         for i in range(len(guildgroups)):
@@ -312,7 +255,7 @@ class GuildService:
                     LOG.warning("Talk power for guild %s is below 0.", g.get("name"))
 
                 # sort guild groups to have users grouped by their guild tag alphabetically in channels
-                _, _ = servergroupaddperm(g.get("sgid"), "i_client_talk_power", tp)
+                _, _ = ts_facade.servergroup_add_permission(g.get("sgid"), "i_client_talk_power", tp)
 
     @staticmethod
     def _build_channel_name(guild_info) -> str:
@@ -374,22 +317,23 @@ class GuildService:
             self._database.cursor.execute("DELETE FROM guilds WHERE guild_name = ?", (guild_name,))
             self._database.conn.commit()
 
-        # CHANNEL
-        channel_name = self._build_channel_name(guild_info)
-        channel = self._ts_repository.channel_find(channel_name)
-        if channel is None:
-            LOG.debug("No channel '%s' to delete.", channel_name)
-        else:
-            LOG.debug("Deleting channel '%s'.", channel_name)
-            self._ts_repository.channel_delete(channel.channel_id, force=True)
+        with self.ts_connection_pool.item() as ts3_facade:
+            # CHANNEL
+            channel_name = self._build_channel_name(guild_info)
+            channel = ts3_facade.channel_find(channel_name)
+            if channel is None:
+                LOG.debug("No channel '%s' to delete.", channel_name)
+            else:
+                LOG.debug("Deleting channel '%s'.", channel_name)
+                ts3_facade.channel_delete(channel.channel_id, force=True)
 
-        # GROUP
-        groups = self._ts_repository.servergroup_list()
-        group = next((g for g in groups if g.get("name") == groupname), None)
-        if group is None:
-            LOG.debug("No group '%s' to delete.", groupname)
-        else:
-            LOG.debug("Deleting group '%s'.", groupname)
-            self._ts_repository.servergroup_delete(group.get("sgid"), force=True)
+            # GROUP
+            groups = ts3_facade.servergroup_list()
+            group = next((g for g in groups if g.get("name") == groupname), None)
+            if group is None:
+                LOG.debug("No group '%s' to delete.", groupname)
+            else:
+                LOG.debug("Deleting group '%s'.", groupname)
+                ts3_facade.servergroup_delete(group.get("sgid"), force=True)
 
-        return SUCCESS
+            return SUCCESS
