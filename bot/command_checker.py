@@ -33,7 +33,7 @@ class CommanderChecker:
 
         acs, ts3qe = self.ts3bot.ts_connection.ts3exec(retrieve_commanders, signal_exception_handler)
         if ts3qe:  # check for .resp, could be another exception type
-            if ts3qe.resp is not None:
+            if hasattr(ts3qe, "resp") and ts3qe.resp is not None:
                 if ts3qe.resp.error["id"] != "1281":
                     # 1281 is "database empty result set", which is an expected error
                     # if not a single user currently wears a tag.
