@@ -1,5 +1,4 @@
 import logging
-import urllib
 
 import binascii
 import requests
@@ -13,12 +12,12 @@ from bot.ts import TS3Facade, User
 LOG = logging.getLogger(__name__)
 
 
-def _handle_guild_icon(name, ts3_facade):
+def _handle_guild_icon(guild_id, name, ts3_facade):
     #########################################
     # RETRIEVE AND UPLOAD GUILD EMBLEM ICON #
     #########################################
     LOG.debug("Retrieving and uploading guild emblem as icon from gw2mists...")
-    icon_url = "https://api.gw2mists.de/guilds/emblem/%s/50.svg" % (urllib.parse.quote(name),)
+    icon_url = f"https://emblem.werdes.net/emblem/{guild_id}/50"
     icon = requests.get(icon_url)
 
     # funnily enough, giving an invalid guild (or one that has no emblem)
@@ -78,12 +77,13 @@ class GuildService:
 
         guild_name = guild_info.get("name")
         guild_tag = guild_info.get("tag")
+        guild_id = guild_info.get("id")
 
         if group_name is None:
             group_name = guild_tag
 
         channel_name = self._build_channel_name(guild_info)
-        channel_description = self._create_guild_channel_description(contacts, guild_name, guild_tag)
+        channel_description = self._create_guild_channel_description(contacts, guild_id, guild_name, guild_tag)
 
         LOG.info("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'.", guild_name, guild_tag, group_name, ", ".join(contacts))
 
@@ -124,7 +124,7 @@ class GuildService:
                 LOG.debug("Checks complete.")
 
                 # Icon uploading
-                icon_id = _handle_guild_icon(guild_name, ts_facade)  # Returns None if no icon
+                icon_id = _handle_guild_icon(guild_id, guild_name, ts_facade)  # Returns None if no icon
 
                 ##################################
                 # CREATE CHANNEL AND SUBCHANNELS #
@@ -214,6 +214,7 @@ class GuildService:
                         for acc in accs:
                             try:
                                 user = User(ts_facade, unique_id=acc)
+                                user = User(ts_facade, unique_id=acc)
                                 ex = ts_facade.set_client_channelgroup(channel_id=cinfo.get("cid"), channelgroup_id=contactgroup.get("cgid"), client_db_id=user.ts_db_id)
                                 # while we are at it, add the contacts to the guild group as well
                                 ts_facade.servergroup_client_add(servergroup_id=guild_servergroup_id, client_db_id=user.ts_db_id)
@@ -265,10 +266,10 @@ class GuildService:
         return channel_name
 
     @staticmethod
-    def _create_guild_channel_description(contacts, name, tag):
+    def _create_guild_channel_description(contacts, id, name, tag):
         contacts = "\n".join(["    • %s" % c for c in contacts])
         text = (f"[center]\n"
-                f"[img]https://api.gw2mists.de/guilds/emblem/{urllib.parse.quote(name)}/128.svg[/img]\n"
+                f"[img]https://emblem.werdes.net/emblem/{id}/128[/img]\n"
                 f"[size=20]{name} - {tag}[/size]\n"
                 f"[/center]\n"
                 f"[hr]\n"
