@@ -153,7 +153,7 @@ class TS3Facade:
         for channel_group_id in channelgroup_ids:
             channel_group_result, ts3qe = self._ts3_connection.ts3exec(lambda tsc: tsc.query("channelgroupclientlist", cgid=channel_group_id).all(), signal_exception_handler)
             if ts3qe:  # check for .resp, could be another exception type
-                if ts3qe.resp is not None:
+                if hasattr(ts3qe, "resp") and ts3qe.resp is not None:
                     if ts3qe.resp.error["id"] != "1281":
                         # 1281 is "database empty result set", which is an expected error
                         # if not a single user currently wears a tag.
