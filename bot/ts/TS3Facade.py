@@ -196,7 +196,7 @@ class TS3Facade:
             return response
         else:
             if hasattr(ex, "resp") and ex.resp is not None:
-                if ex.resp.error["id"] != "512":
+                if ex.resp.error["id"] == "512":
                     # user not found
                     return None
         raise ex
