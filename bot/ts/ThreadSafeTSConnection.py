@@ -82,7 +82,7 @@ class ThreadSafeTSConnection:
         if self._server_id is not None:
             self.ts3exec(lambda tc: tc.exec_("use", sid=self._server_id))
         if self._bot_nickname is not None:
-            self.forceRename(self._bot_nickname)
+            self.force_rename(self._bot_nickname)
 
     def __enter__(self):
         return self
@@ -92,7 +92,7 @@ class ThreadSafeTSConnection:
         return None
 
     def keepalive(self):
-        LOG.info(f"Keepalive Ts Connection {self._bot_nickname}")
+        LOG.debug(f"Keepalive Ts Connection {self._bot_nickname}")
         self.ts3exec(lambda tc: tc.send_keepalive())
 
     def ts3exec(self,
@@ -150,11 +150,15 @@ class ThreadSafeTSConnection:
 
         # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
         if self.ts_connection is not None:
-            self.ts_connection.exec_("quit")  # send quit
-            self.ts_connection.close()  # immediately quit
-            del self.ts_connection
+            try:
+                self.ts_connection.exec_("quit")  # send quit
+                self.ts_connection.close()  # immediately quit
+            except Exception as ex:
+                LOG.debug("Exception during closing the connection. This is usually not a problem.", exc_info=ex)
+            finally:
+                del self.ts_connection
 
-    def gentleRename(self, nickname):
+    def _gentle_rename(self, nickname):
         """
         Renames self to nickname, but attaches a running counter
         to the name if the nickname is already taken.
@@ -169,7 +173,7 @@ class ThreadSafeTSConnection:
         self._bot_nickname = new_nick
         return self._bot_nickname
 
-    def forceRename(self, target_nickname):
+    def force_rename(self, target_nickname):
         """
         Attempts to forcefully rename self.
         If the chosen nickname is already taken, the bot will attempt to kick that user.
@@ -196,7 +200,7 @@ class ThreadSafeTSConnection:
                             target_nickname)
                     else:
                         LOG.info("Kicked user who was using the reserved registration bot name '%s'.", target_nickname)
-                    target_nickname = self.gentleRename(target_nickname)
+                    target_nickname = self._gentle_rename(target_nickname)
                     LOG.info("Renamed self to '%s'.", target_nickname)
                 else:
                     self.ts3exec(lambda tc: tc.exec_("clientupdate", client_nickname=target_nickname))

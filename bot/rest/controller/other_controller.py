@@ -19,7 +19,7 @@ class OtherController(AbstractController):
         @self.api.route("/commanders", methods=["GET"])
         def _active_commanders():
             acs = self._bot.getActiveCommanders()
-            return acs if acs is not None else abort(503, "")
+            return acs if acs is not None else abort(503)
 
         @self.api.route("/registration", methods=["DELETE"])
         def _delete_registration():

@@ -35,6 +35,12 @@ optional arguments:
                         Config file location
 ```
 
+#API
+This project has an [OpenAPI Specification](https://swagger.io/specification/), that is available under `http://localhost:10137/v2/api-docs` once the service started.
+A corresponding [Swagger UI](https://swagger.io/tools/swagger-ui/) is available under `http://localhost:10137/`.
+
+There are no api security mechanisms in place. It is assumed, that either a network based access policy will be enforced, or a reverse proxy handles authentication. 
+
 # Docker Compose
 ```
 version: "3.8"

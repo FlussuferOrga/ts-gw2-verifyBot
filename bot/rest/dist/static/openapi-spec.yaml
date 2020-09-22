@@ -3,9 +3,23 @@ info:
   title: ts-gw2-verifyBot
   description: ts-gw2-verifyBot
   version: 1.0.0
-servers:
-  - url: 'http://localhost:10137'
 paths:
+  /health:
+    get:
+      summary: Healthckeck
+      operationId: helathCheck
+      tags:
+        - meta
+      responses:
+        default:
+          $ref: '#/components/responses/genericErrorResponse'
+        200:
+          description: Response with active commanders
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "OK"
   /registration:
     delete:
       summary: delete a registration for an account
@@ -106,6 +120,7 @@ paths:
               properties:
                 name:
                   type: string
+                  example: "Foo Fighters"
       responses:
         default:
           $ref: '#/components/responses/genericErrorResponse'
@@ -154,7 +169,7 @@ components:
         contacts:
           type: array
           nullable: true
-          example: ['UserName.1234']
+          example: [ 'UserName.1234' ]
           items:
             $ref: "#/components/schemas/GuildContact"
     GuildContact:

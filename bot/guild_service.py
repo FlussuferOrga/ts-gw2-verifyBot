@@ -26,12 +26,16 @@ def _handle_guild_icon(guild_id, name, ts3_facade):
     # causing any problems!
     # Therefore checking content length..
     if len(icon.content) > 100:  # more than an "ok" or weird string
-        icon_id = binascii.crc32(name.encode('utf8'))
+        icon_id = _generate_guild_icon_id(name)
 
         ts3_facade.upload_icon(icon_id, icon.content)
         return icon_id
     LOG.debug("Empty Response. Guild probably has no icon. Skipping Icon upload.")
     return None
+
+
+def _generate_guild_icon_id(name) -> int:
+    return binascii.crc32(name.encode('utf8'))
 
 
 class GuildService:
@@ -244,8 +248,8 @@ class GuildService:
     def _sort_guild_groups_using_talk_power(self, groups, ts_facade):
         with self._database.lock:
             guildgroups = [g[0] for g in self._database.cursor.execute("SELECT ts_group FROM guilds ORDER BY ts_group").fetchall()]
-        for i in range(len(guildgroups)):
-            g = next((g for g in groups if g.get("name") == guildgroups[i]), None)
+        for i, guild_group in enumerate(guildgroups):
+            g = next((g for g in groups if g.get("name") == guild_group), None)
             if g is None:
                 # error! Group deleted from TS, but not from DB!
                 LOG.warning("Found guild '%s' in the database, but no coresponding server group! Skipping this entry, but it should be fixed!", guildgroups[i])
@@ -336,5 +340,9 @@ class GuildService:
             else:
                 LOG.debug("Deleting group '%s'.", groupname)
                 ts3_facade.servergroup_delete(group.get("sgid"), force=True)
+
+            guild_icon_id = _generate_guild_icon_id(guild_name)
+
+            ts3_facade.remove_icon_if_exists(guild_icon_id)
 
             return SUCCESS

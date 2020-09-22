@@ -1,5 +1,6 @@
 from typing import List, Optional
 
+from cachetools import LRUCache, TTLCache, cached
 from gw2api import GuildWars2Client
 
 from .account import Account
@@ -32,6 +33,7 @@ from .world import World
 #
 
 
+@cached(cache=TTLCache(maxsize=32, ttl=300))  # cache user specific clients for 5 min - creation takes quite long
 def _create_client(api_key: str = None) -> GuildWars2Client:
     return GuildWars2Client(version='v2', api_key=api_key)
 
@@ -49,17 +51,20 @@ class ApiError(RuntimeError):
     pass
 
 
+@cached(cache=TTLCache(maxsize=20, ttl=60 * 60))  # cache for 1h
 def guild_get(guild_id: str) -> Optional[AnonymousGuild]:
     result = _anonymousClient.guildid.get(guild_id)
     return _check_error(result)
 
 
+@cached(cache=TTLCache(maxsize=10, ttl=300))  # cache clients for 5 min - creation takes quite long
 def guild_get_full(api_key: str, guild_id: str) -> Optional[Guild]:
     api = _create_client(api_key=api_key)
     result = api.guildid.get(guild_id)
     return _check_error(result)
 
 
+@cached(cache=TTLCache(maxsize=32, ttl=600))  # cache for 10 min
 def guild_search(guild_name: str) -> Optional[str]:
     search_result = _anonymousClient.guildsearch.get(name=guild_name)
     search_result = _check_error(search_result)
@@ -70,16 +75,19 @@ def guild_search(guild_name: str) -> Optional[str]:
     return search_result[0]
 
 
+@cached(cache=TTLCache(maxsize=32, ttl=300))  # cache clients for 5 min - creation takes quite long
 def account_get(api_key: str) -> Account:
     api = _create_client(api_key=api_key)
     return _check_error(api.account.get())
 
 
+@cached(cache=TTLCache(maxsize=32, ttl=300))  # cache clients for 5 min - creation takes quite long
 def characters_get(api_key: str) -> List[Character]:
     api = _create_client(api_key=api_key)
     return _check_error(api.characters.get(page="0", page_size=200))
 
 
+@cached(cache=LRUCache(maxsize=10))
 def worlds_get_ids() -> List[int]:
     return _check_error(_anonymousClient.worlds.get(ids=None))
 
@@ -88,6 +96,7 @@ def worlds_get_by_ids(ids: List[int]) -> List[World]:
     return _check_error(_anonymousClient.worlds.get(ids=ids))
 
 
+@cached(cache=LRUCache(maxsize=10))
 def worlds_get_one(world_id: int = None) -> Optional[World]:
     worlds = worlds_get_by_ids([world_id])
     if len(worlds) == 1:

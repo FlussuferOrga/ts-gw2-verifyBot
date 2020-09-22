@@ -3,7 +3,7 @@ import threading
 
 import flask_cors
 import waitress  # productive serve
-from flask import Flask
+from flask import Flask, render_template
 from werkzeug.exceptions import HTTPException
 
 from bot.rest.controller import GuildController, HealthController, OtherController, ResetRosterController
@@ -14,13 +14,17 @@ LOG = logging.getLogger(__name__)
 
 class HTTPServer(Flask):
     def __init__(self, bot, port):
-        super().__init__(__name__)
+        super().__init__(__name__,
+                         static_url_path='',
+                         static_folder="dist/static",
+                         template_folder="dist/templates")
         self.bot = bot
         self.port = port
         self._thread = self._create_thread()
 
     def start(self):
         LOG.debug("Starting HTTP Server...")
+        self._thread.setDaemon(True)
         self._thread.start()
 
     def _create_thread(self):
@@ -43,7 +47,20 @@ def create_http_server(bot, port=8080):
 
     register_controllers(app, bot)
     register_error_handlers(flask=app)
+
+    register_open_api_endpoints(app)
+
     return app
+
+
+def register_open_api_endpoints(app):
+    @app.route('/')
+    def _dist():
+        return render_template('index.html', swagger_ui_version="3.34.0")
+
+    @app.route('/v2/api-docs')
+    def _dist2():
+        return app.send_static_file('openapi-spec.yaml')
 
 
 def register_controllers(app, bot):
@@ -59,5 +76,5 @@ def register_controllers(app, bot):
 
 def register_error_handlers(flask: Flask):
     @flask.errorhandler(HTTPException)
-    def _handle_error(e: HTTPException):
-        return error_response(e.code, e.name, e.description)
+    def _handle_error(exception: HTTPException):
+        return error_response(exception.code, exception.name, exception.description)

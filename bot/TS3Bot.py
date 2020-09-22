@@ -15,8 +15,13 @@ from bot.db import ThreadSafeDBConnection
 from bot.ts import TS3Facade, User
 from bot.util import StringShortener
 from .TS3Auth import AuthRequest
+from .audit_service import AuditService
 from .connection_pool import ConnectionPool
 from .guild_service import GuildService
+
+# Queue Priorities, lower entries will be handles before, larger entries.
+QUEUE_PRIORITY_AUDIT = 100
+QUEUE_PRIORITY_JOIN = 20
 
 LOG = logging.getLogger(__name__)
 
@@ -32,7 +37,8 @@ class Bot:
         self._config = config
         self._database_connection = database
 
-        self.guild_service = GuildService(database, self._ts_connection_pool, config)
+        self.audit_service = AuditService(self._database_connection, self._ts_connection_pool, config, self)
+        self.guild_service = GuildService(self._database_connection, self._ts_connection_pool, config)
 
         admin_data, _ = self._ts_facade.whoami()
         self.name = admin_data.get('client_login_name')
@@ -41,7 +47,7 @@ class Bot:
         self.nickname = self._ts_facade.force_rename(config.bot_nickname)
 
         self.verified_group = config.verified_group
-        self.vgrp_id = self.groupFind(self.verified_group)
+        self.vgrp_id = self._find_group_by_name(self.verified_group)
 
         self.c_audit_date = datetime.date.today()
         self.commander_checker = CommanderChecker(self, config.poll_group_names)
@@ -51,7 +57,7 @@ class Bot:
         return self._ts_connection_pool
 
     # Helps find the group ID for a group name
-    def groupFind(self, group_to_find):
+    def _find_group_by_name(self, group_to_find):
         with self._ts_connection_pool.item() as ts_facade:
             self.groups_list = ts_facade.servergroup_list()
         for group in self.groups_list:
@@ -60,13 +66,14 @@ class Bot:
         return -1
 
     def clientNeedsVerify(self, unique_client_id):
-
         with self._ts_connection_pool.item() as ts_facade:
             client_db_id = ts_facade.client_db_id_from_uid(unique_client_id)
-
-            # Check if user is in verified group
-            if any(perm_grp.get('name') == self.verified_group for perm_grp in ts_facade.servergroup_list_by_client(client_db_id)):
-                return False  # User already verified
+            if client_db_id is None:
+                raise ValueError("User not found in Teamspeak Database.")
+            else:
+                # Check if user is in verified group
+                if any(perm_grp.get('name') == self.verified_group for perm_grp in ts_facade.servergroup_list_by_client(client_db_id)):
+                    return False  # User already verified
 
         # Check if user is authenticated in database and if so, re-adds them to the group
         with self._database_connection.lock:
@@ -82,10 +89,13 @@ class Bot:
             # Add user to group
             with self._ts_connection_pool.item() as facade:
                 client_db_id = facade.client_db_id_from_uid(unique_client_id)
-                LOG.debug("Adding Permissions: CLUID [%s] SGID: %s   CLDBID: %s", unique_client_id, self.vgrp_id, client_db_id)
-                ex = facade.servergroup_client_add(servergroup_id=self.vgrp_id, client_db_id=client_db_id)
-                if ex:
-                    LOG.error("Unable to add client to '%s' group. Does the group exist?", self.verified_group)
+                if client_db_id is None:
+                    LOG.warning("User not found in Database.")
+                else:
+                    LOG.debug("Adding Permissions: CLUID [%s] SGID: %s   CLDBID: %s", unique_client_id, self.vgrp_id, client_db_id)
+                    ex = facade.servergroup_client_add(servergroup_id=self.vgrp_id, client_db_id=client_db_id)
+                    if ex:
+                        LOG.error("Unable to add client to '%s' group. Does the group exist?", self.verified_group)
         except ts3.query.TS3QueryError as err:
             LOG.error("Setting permissions failed: %s", err)  # likely due to bad client id
 
@@ -93,20 +103,23 @@ class Bot:
         try:
             with self._ts_connection_pool.item() as ts_facade:
                 client_db_id = ts_facade.client_db_id_from_uid(unique_client_id)
-                LOG.debug("Removing Permissions: CLUID [%s] SGID: %s   CLDBID: %s", unique_client_id, self.vgrp_id, client_db_id)
+                if client_db_id is None:
+                    LOG.warning("User not found in Database.")
+                else:
+                    LOG.debug("Removing Permissions: CLUID [%s] SGID: %s   CLDBID: %s", unique_client_id, self.vgrp_id, client_db_id)
 
-                # Remove user from group
-                ex = ts_facade.servergroup_client_del(servergroup_id=self.vgrp_id, client_db_id=client_db_id)
-                if ex:
-                    LOG.error("Unable to remove client from '%s' group. Does the group exist and are they member of the group?", self.verified_group)
-                # Remove users from all groups, except the whitelisted ones
-                if self._config.purge_completely:
-                    # FIXME: remove channel groups as well
-                    assigned_groups = ts_facade.servergroup_list_by_client(client_db_id)
-                    if assigned_groups is not None:
-                        for g in assigned_groups:
-                            if g.get("name") not in self._config.purge_whitelist:
-                                ts_facade.servergroup_client_del(servergroup_id=g.get("sgid"), client_db_id=client_db_id)
+                    # Remove user from group
+                    ex = ts_facade.servergroup_client_del(servergroup_id=self.vgrp_id, client_db_id=client_db_id)
+                    if ex:
+                        LOG.error("Unable to remove client from '%s' group. Does the group exist and are they member of the group?", self.verified_group)
+                    # Remove users from all groups, except the whitelisted ones
+                    if self._config.purge_completely:
+                        # FIXME: remove channel groups as well
+                        assigned_groups = ts_facade.servergroup_list_by_client(client_db_id)
+                        if assigned_groups is not None:
+                            for g in assigned_groups:
+                                if g.get("name") not in self._config.purge_whitelist:
+                                    ts_facade.servergroup_client_del(servergroup_id=g.get("sgid"), client_db_id=client_db_id)
         except TS3QueryError as err:
             LOG.error("Removing permissions failed: %s", err)  # likely due to bad client id
 
@@ -229,14 +242,14 @@ class Bot:
 
     def trigger_user_audit(self):
         LOG.info("Auditing users")
-        threading.Thread(target=self._audit_users).start()
+        threading.Thread(name="FullAudit", target=self._audit_users, daemon=True).start()
 
     def _audit_users(self):
         self.c_audit_date = datetime.date.today()  # Update current date everytime run
-        self.db_audit_list = []
+
         with self._database_connection.lock:
-            self.db_audit_list = self._database_connection.cursor.execute('SELECT * FROM users').fetchall()
-        for audit_user in self.db_audit_list:
+            db_audit_list = self._database_connection.cursor.execute('SELECT * FROM users').fetchall()
+        for audit_user in db_audit_list:
 
             # Convert to single variables
             audit_ts_id = audit_user[0]
@@ -248,41 +261,35 @@ class Bot:
             LOG.debug("Audit: User %s", audit_account_name)
             LOG.debug("TODAY |%s|  NEXT AUDIT |%s|", self.c_audit_date, audit_last_audit_date + datetime.timedelta(days=self._config.audit_period))
 
-            ts_uuid = self._ts_facade.client_db_id_from_uid(audit_ts_id)
-            if ts_uuid is None:
-                LOG.info("User %s is not found in TS DB and could be deleted.", audit_account_name)
-                # self.removeUserFromDB(audit_ts_id)
-            else:
-                # compare audit date
-                if self.c_audit_date >= audit_last_audit_date + datetime.timedelta(days=self._config.audit_period):
-                    LOG.info("User %s is due for auditing!", audit_account_name)
-                    auth = AuthRequest(audit_api_key, self._config.required_servers, int(self._config.required_level), audit_account_name)
-                    if auth.success:
-                        LOG.info("User %s is still on %s. Succesful audit!", audit_account_name, auth.world.get("name"))
-                        # self.getTsDatabaseID(audit_ts_id)
-                        with self._ts_connection_pool.item() as ts_facade:
-                            self.updateGuildTags(ts_facade, User(ts_facade, unique_id=audit_ts_id), auth)
-                        with self._database_connection.lock:
-                            self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", (self.c_audit_date, audit_ts_id,))
-                            self._database_connection.conn.commit()
-                    else:
-                        LOG.info("User %s is no longer on our server. Removing access....", audit_account_name)
-                        self.removePermissions(audit_ts_id)
-                        self.removeUserFromDB(audit_ts_id)
+            if self.c_audit_date >= audit_last_audit_date + datetime.timedelta(days=self._config.audit_period):  # compare audit date
+                ts_uuid = self._ts_facade.client_db_id_from_uid(audit_ts_id)
+                if ts_uuid is None:
+                    LOG.info("User %s is not found in TS DB and could be deleted.", audit_account_name)
+                    # self.removeUserFromDB(audit_ts_id)
+                else:
+                    LOG.info("User %s is due for auditing! Queueing", audit_account_name)
+                    self.audit_service.queue_user_audit(QUEUE_PRIORITY_AUDIT, audit_account_name, audit_api_key, audit_ts_id)
 
         with self._database_connection.lock:
             self._database_connection.cursor.execute('INSERT INTO bot_info (last_succesful_audit) VALUES (?)', (self.c_audit_date,))
             self._database_connection.conn.commit()
 
+    def audit_user_on_join(self, client_unique_id):
+        db_entry = self.getUserDBEntry(client_unique_id)
+        if db_entry is not None:
+            account_name = db_entry["account_name"]
+            api_key = db_entry["api_key"]
+            self.audit_service.queue_user_audit(QUEUE_PRIORITY_JOIN, account_name=account_name, api_key=api_key, client_unique_id=client_unique_id)
+
     def broadcastMessage(self):
         broadcast_message = self._config.locale.get("bot_msg_broadcast")
         self._ts_facade.send_text_message_to_current_channel(msg=broadcast_message)
 
-    def loginEventHandler(self, event):
-        # raw_sgroups = event.parsed[0].get('client_servergroups')
-        client_type: int = int(event.parsed[0].get('client_type'))
-        raw_clid = event.parsed[0].get('clid')
-        raw_cluid = event.parsed[0].get('client_unique_identifier')
+    def loginEventHandler(self, event_data):
+        # raw_sgroups = event_data.get('client_servergroups')
+        client_type: int = int(event_data.get('client_type'))
+        raw_clid = event_data.get('clid')
+        raw_cluid = event_data.get('client_unique_identifier')
 
         if client_type == 1:  # serverquery client, no need to send message or verify
             return
@@ -292,6 +299,8 @@ class Bot:
 
         if self.clientNeedsVerify(raw_cluid):
             self._ts_facade.send_text_message_to_client(raw_clid, self._config.locale.get("bot_msg_verify"))
+        else:
+            self.audit_user_on_join(raw_cluid)
 
     def commandCheck(self, command_string):
         action = (None, None)
@@ -373,18 +382,16 @@ class Bot:
     #            clientsocket.respond(mid, mcommand, {"status": res})
 
     # Handler that is used every time an event (message) is received from teamspeak server
-    def messageEventHandler(self, event):
+    def messageEventHandler(self, event_data):
         """
         *event* is a ts3.response.TS3Event instance, that contains the name
         of the event and the data.
         """
-        LOG.debug("event.event: %s", event.event)
-
-        raw_cmd = event.parsed[0].get('msg')
-        rec_from_name = event.parsed[0].get('invokername').encode('utf-8')  # fix any encoding issues introduced by Teamspeak
-        rec_from_uid = event.parsed[0].get('invokeruid')
-        rec_from_id = event.parsed[0].get('invokerid')
-        rec_type = event.parsed[0].get('targetmode')
+        raw_cmd = event_data.get('msg')
+        rec_from_name = event_data.get('invokername').encode('utf-8')  # fix any encoding issues introduced by Teamspeak
+        rec_from_uid = event_data.get('invokeruid')
+        rec_from_id = event_data.get('invokerid')
+        rec_type = event_data.get('targetmode')
 
         if rec_from_id == self.client_id:
             return  # ignore our own messages.
