@@ -18,14 +18,14 @@ def _handle_guild_icon(guild_id, name, ts3_facade):
     #########################################
     LOG.debug("Retrieving and uploading guild emblem as icon from gw2mists...")
     icon_url = f"https://emblem.werdes.net/emblem/{guild_id}/50"
-    icon = requests.get(icon_url)
+    icon = requests.get(icon_url, verify=False)  # TODO remove verify argument if api has correct certifcate chain https://github.com/werdes/Gw2_GuildEmblems/issues/1
 
     # funnily enough, giving an invalid guild (or one that has no emblem)
     # results in HTTP 200, but a JSON explaining the error instead of an SVG image.
     # Storing this JSON and uploading it to TS just fails silently without
     # causing any problems!
     # Therefore checking content length..
-    if len(icon.content) > 0:
+    if len(icon.content) > 100:  # more than an "ok" or weird string
         icon_id = binascii.crc32(name.encode('utf8'))
 
         ts3_facade.upload_icon(icon_id, icon.content)

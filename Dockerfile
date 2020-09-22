@@ -1,4 +1,5 @@
 FROM python:3
+#RUN sudo apt-get install -y ca-certificates
 
 HEALTHCHECK --interval=2m --timeout=2s CMD curl -f http://localhost:10137/health || exit 1
 

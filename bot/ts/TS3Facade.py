@@ -107,10 +107,9 @@ class TS3Facade:
                         raise TS3UploadError(0, "The uploaded Icon is too large")
 
         icon_server_path = f"/icon_{icon_id}"
-        icon_local_file_name = f"{icon_id}_icon.svg"  # using name instead of tag, because tags are not unique
+        icon_local_file_name = f"{icon_id}_icon.png"  # using name instead of tag, because tags are not unique
         with open(icon_local_file_name, "w+b") as file_handle:
             try:
-                # svg
                 file_handle.write(icon_data)
                 file_handle.flush()
                 file_handle.seek(0)
