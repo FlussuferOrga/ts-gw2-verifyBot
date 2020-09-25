@@ -45,6 +45,7 @@ jobs:
       - name: Run Pylint
         run: |
           python -m tools.pylint \
+            --jobs 1 \
             --reports=y \
             --persistent=n \
             --rcfile=.pylintrc \
