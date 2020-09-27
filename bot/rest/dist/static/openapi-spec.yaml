@@ -6,7 +6,7 @@ info:
 paths:
   /health:
     get:
-      summary: Healthckeck
+      summary: simple health/liveness check
       operationId: helathCheck
       tags:
         - meta
