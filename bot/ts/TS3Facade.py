@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 import ts3
 from ts3 import TS3Error
 from ts3.filetransfer import TS3FileTransfer, TS3UploadError
+from ts3.query import TS3TimeoutError
 
 from bot.ts.ThreadSafeTSConnection import ThreadSafeTSConnection, ignore_exception_handler, signal_exception_handler
 from bot.ts.types.channel_list_detail import ChannelListDetail
@@ -21,10 +22,15 @@ class TS3Facade:
         self._ts3_connection.close()
 
     def is_connected(self):
-        return self._ts3_connection.ts3exec(lambda tc: tc.is_connected(), signal_exception_handler)[0]
+        return self._ts3_connection.ts3exec(lambda tc: tc.is_connected())[0]
 
     def wait_for_event(self, timeout: int):
-        return self._ts3_connection.ts3exec(lambda tc: tc.wait_for_event(timeout=timeout), ignore_exception_handler)[0]
+        resp, ex = self._ts3_connection.ts3exec(lambda tc: tc.wait_for_event(timeout=timeout), signal_exception_handler)
+        if ex is None:
+            return resp
+        if isinstance(ex, TS3TimeoutError):
+            return None
+        raise ex
 
     def send_text_message_to_client(self, target_client_id: int, msg: str):
         self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode=1, target=target_client_id, msg=msg))

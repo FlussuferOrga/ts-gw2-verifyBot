@@ -102,26 +102,15 @@ def main(args: Namespace):  #
                     while ts_facade.is_connected():
                         # auditjob + keepalive check
                         schedule.run_pending()
-                        response: TS3Event
                         try:
-                            response = ts_facade.wait_for_event(timeout=config.bot_sleep_idle)
-                            event_type: str = response.event
-                            event_data = response.parsed[0]
-                            if event_type == 'notifytextmessage':
-                                if "msg" in event_data:
-                                    # text message
-                                    bot_instance.messageEventHandler(event_data)  # handle event
-                            elif event_type == 'notifycliententerview':
-                                if event_data["client_type"] == '1':  # server query client
-                                    continue
-                                else:
-                                    bot_instance.loginEventHandler(event_data)  # handle event
-                            elif event_type == 'notifyclientleftview':  # client left
-                                continue
-                            else:
-                                LOG.warning("Unhandled Event: %s", event_type)
+                            response: TS3Event = ts_facade.wait_for_event(timeout=config.bot_sleep_idle)
+                            if response is not None:
+                                event_type: str = response.event
+                                event_data = response.parsed[0]
+
+                                _handle_event(bot_instance, event_data, event_type)
                         except Exception as ex:
-                            LOG.error("Error while trying to handle event %s: %s", event_type, str(event_data), exc_info=ex)
+                            LOG.error("Error while handling the event", exc_info=ex)
 
                 LOG.warning("It appears the BOT has lost connection to teamspeak. Trying to restart connection in %s seconds....", config.bot_sleep_conn_lost)
                 time.sleep(config.bot_sleep_conn_lost)
@@ -130,9 +119,27 @@ def main(args: Namespace):  #
                 LOG.warning("Unable to reach teamspeak server..trying again in %s seconds...", config.bot_sleep_conn_lost)
                 time.sleep(config.bot_sleep_conn_lost)
         except (KeyboardInterrupt, SystemExit):
-            LOG.info("Stopping...")
+            LOG.info("Stopping Connection Pool...")
+            ts_connection_pool.close()
+
+            LOG.info("Stopping Http Server")
             http_server.stop()
+
+            LOG.info("Bye!")
             sys.exit(0)
+
+
+def _handle_event(bot_instance, event_data, event_type):
+    if event_type == 'notifytextmessage':  # text message
+        if "msg" in event_data:
+            bot_instance.messageEventHandler(event_data)  # handle event
+    elif event_type == 'notifycliententerview':
+        if event_data["client_type"] == '0':  # no server query client
+            bot_instance.loginEventHandler(event_data)  # handle event
+    elif event_type == 'notifyclientleftview':  # client left
+        pass  # this event is not of interest
+    else:
+        LOG.warning("Unhandled Event: %s", event_type)
 
 
 def create_connection_pool(config):

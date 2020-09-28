@@ -145,6 +145,7 @@ class ThreadSafeTSConnection:
         return res, exres
 
     def close(self):
+        LOG.info("Closing %s", self)
         if self._keepalive_job is not None:
             schedule.cancel_job(self._keepalive_job)
 

@@ -201,3 +201,16 @@ class ConnectionPool(Generic[_T]):
 
         if self._test_function and not self._test_function(wrapped.connection):
             raise Unhealthy('Connection test determined that the connection is not healthy')
+
+    def close(self):
+        self._lock.acquire()
+
+        try:
+            q = self._pool
+            for items in range(0, self._size):
+                try:
+                    self._destroy(q.get(timeout=10))
+                except queue.Empty:
+                    pass
+        finally:
+            self._lock.release()
