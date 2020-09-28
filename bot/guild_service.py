@@ -1,37 +1,13 @@
 import logging
 
-import binascii
-import requests
-
 import bot.gwapi as gw2api
 from bot.config import Config
 from bot.connection_pool import ConnectionPool
 from bot.db import ThreadSafeDBConnection
+from bot.emblem_downloader import download_guild_emblem
 from bot.ts import TS3Facade, User
 
 LOG = logging.getLogger(__name__)
-
-
-def _handle_guild_icon(guild_id, name, ts3_facade):
-    #########################################
-    # RETRIEVE AND UPLOAD GUILD EMBLEM ICON #
-    #########################################
-    LOG.debug("Retrieving and uploading guild emblem as icon from gw2mists...")
-    icon_url = f"https://emblem.werdes.net/emblem/{guild_id}/128"
-    icon = requests.get(icon_url)
-
-    # funnily enough, giving an invalid guild (or one that has no emblem)
-    # results in HTTP 200, but a JSON explaining the error instead of an SVG image.
-    # Storing this JSON and uploading it to TS just fails silently without
-    # causing any problems!
-    # Therefore checking content length..
-    if len(icon.content) > 100:  # more than an "ok" or weird string
-        icon_id = binascii.crc32(name.encode('utf8'))
-
-        ts3_facade.upload_icon(icon_id, icon.content)
-        return icon_id
-    LOG.debug("Empty Response. Guild probably has no icon. Skipping Icon upload.")
-    return None
 
 
 class GuildService:
@@ -124,12 +100,15 @@ class GuildService:
                 LOG.debug("Checks complete.")
 
                 # Icon uploading
-                icon_id = _handle_guild_icon(guild_id, guild_name, ts_facade)  # Returns None if no icon
+                icon_id, icon_content = download_guild_emblem(guild_id, guild_name)  # Returns None if no icon
+                if icon_id is not None and icon_content is not None:
+                    LOG.info("Uploading icon as '%s'", icon_id)
+                    ts_facade.upload_icon(icon_id, icon_content)
 
                 ##################################
                 # CREATE CHANNEL AND SUBCHANNELS #
                 ##################################
-                LOG.debug("Creating guild channels...")
+                LOG.debug("Creating guild channel ...")
                 channel_list, _ = ts_facade.channel_list()
 
                 # assert channel and group both exist and parent channel is available
