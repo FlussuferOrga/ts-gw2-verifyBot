@@ -63,6 +63,8 @@ class ThreadSafeTSConnection:
         self._keepalive_job = None
         self.init()
 
+        LOG.info("New Connection {self} is ready.")
+
     def init(self):
         if self.ts_connection is not None:
             try:
@@ -84,6 +86,9 @@ class ThreadSafeTSConnection:
         if self._bot_nickname is not None:
             self.forceRename(self._bot_nickname)
 
+    def __str__(self):
+        return f"ThreadSafeTSConnection[{self._bot_nickname}]"
+
     def __enter__(self):
         return self
 
@@ -92,7 +97,7 @@ class ThreadSafeTSConnection:
         return None
 
     def keepalive(self):
-        LOG.info(f"Keepalive Ts Connection {self._bot_nickname}")
+        LOG.info(f"Keepalive {self}")
         self.ts3exec(lambda tc: tc.send_keepalive())
 
     def ts3exec(self,
@@ -145,6 +150,7 @@ class ThreadSafeTSConnection:
         return res, exres
 
     def close(self):
+        LOG.info("Closing Connection ", self)
         if self._keepalive_job is not None:
             schedule.cancel_job(self._keepalive_job)
 

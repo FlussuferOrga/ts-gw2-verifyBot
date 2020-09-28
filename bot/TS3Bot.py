@@ -5,6 +5,7 @@ import re
 import sqlite3  # Database
 import threading
 import traceback
+from typing import List, Tuple, Union
 
 import ts3
 from ts3.query import TS3QueryError
@@ -293,13 +294,12 @@ class Bot:
         if self.clientNeedsVerify(raw_cluid):
             self._ts_facade.send_text_message_to_client(raw_clid, self._config.locale.get("bot_msg_verify"))
 
-    def commandCheck(self, command_string):
-        action = (None, None)
+    def command_check(self, command_string) -> Union[Tuple[str, List[str]], Tuple[None, None]]:
         for allowed_cmd in self._config.cmd_list:
             if re.match(r'(^%s)\s*' % (allowed_cmd,), command_string):
                 toks = command_string.split()  # no argument for split() splits on arbitrary whitespace
-                action = (toks[0], toks[1:])
-        return action
+                return toks[0], toks[1:]
+        return None, None
 
     def try_get(self, dictionary, key, lower=False, typer=lambda x: x, default=None):
         v = typer(dictionary[key] if key in dictionary else default)
@@ -380,7 +380,7 @@ class Bot:
         """
         LOG.debug("event.event: %s", event.event)
 
-        raw_cmd = event.parsed[0].get('msg')
+        message = event.parsed[0].get('msg')
         rec_from_name = event.parsed[0].get('invokername').encode('utf-8')  # fix any encoding issues introduced by Teamspeak
         rec_from_uid = event.parsed[0].get('invokeruid')
         rec_from_id = event.parsed[0].get('invokerid')
@@ -391,55 +391,72 @@ class Bot:
         try:
             # Type 2 means it was channel text
             if rec_type == "2":
-                cmd, args = self.commandCheck(raw_cmd)  # sanitize the commands but also restricts commands to a list of known allowed commands
-                if cmd == "ping":
-                    LOG.info("Ping received from '%s'!", rec_from_name)
-                    self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_pong_response"))
-                if cmd == "hideguild":
-                    LOG.info("User '%s' wants to hide guild '%s'.", rec_from_name, args[0])
-                    with self._database_connection.lock:
-                        try:
-                            self._database_connection.cursor.execute("INSERT INTO guild_ignores(guild_id, ts_db_id, ts_name) VALUES((SELECT guild_id FROM guilds WHERE ts_group = ?), ?,?)",
-                                                                     (args[0], rec_from_uid, rec_from_name))
-                            self._database_connection.conn.commit()
-                            LOG.debug("Success!")
-                            self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_hide_guild_success"))
-                        except sqlite3.IntegrityError:
-                            self._database_connection.conn.rollback()
-                            LOG.debug("Failed. The group probably doesn't exist or the user is already hiding that group.")
-                            self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_hide_guild_unknown"))
-
-                elif cmd == "unhideguild":
-                    LOG.info("User '%s' wants to unhide guild '%s'.", rec_from_name, args[0])
-                    with self._database_connection.lock:
-                        self._database_connection.cursor.execute("DELETE FROM guild_ignores WHERE guild_id = (SELECT guild_id FROM guilds WHERE ts_group = ? AND ts_db_id = ?)",
-                                                                 (args[0], rec_from_uid))
-                        changes = self._database_connection.cursor.execute("SELECT changes()").fetchone()[0]
-                        self._database_connection.conn.commit()
-                        if changes > 0:
-                            LOG.debug("Success!")
-                            self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_unhide_guild_success"))
+                LOG.info("Received Text Channel Message from %s (%s) : %s", rec_from_name, rec_from_uid, message)
+                cmd, args = self.command_check(message)  # sanitize the commands but also restricts commands to a list of known allowed commands
+                if cmd is not None:
+                    if cmd == "ping":
+                        LOG.info("Ping received from '%s'!", rec_from_name)
+                        self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_pong_response"))
+                    if cmd == "hideguild":
+                        if len(args) == 1:
+                            LOG.info("User '%s' wants to hide guild '%s'.", rec_from_name, args[0])
+                            with self._database_connection.lock:
+                                try:
+                                    tag_to_hide = args[0]
+                                    result = self._database_connection.cursor.execute("SELECT guild_id FROM guilds WHERE ts_group = ?", (tag_to_hide,)).fetchone()
+                                    if result is None:
+                                        LOG.debug("Failed. The group probably doesn't exist or the user is already hiding that group.")
+                                        self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_hide_guild_unknown"))
+                                    else:
+                                        guild_db_id = result[0]
+                                        self._database_connection.cursor.execute(
+                                            "INSERT INTO guild_ignores(guild_id, ts_db_id, ts_name) VALUES(?, ?, ?)",
+                                            (guild_db_id, rec_from_uid, rec_from_name))
+                                        self._database_connection.conn.commit()
+                                        LOG.debug("Success!")
+                                        self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_hide_guild_success"))
+                                except sqlite3.IntegrityError as ex:
+                                    self._database_connection.conn.rollback()
+                                    LOG.error("Database error during hideguild", ex)
+                                    self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_hide_guild_unknown"))
                         else:
-                            LOG.debug("Failed. Either the guild is unknown or the user had not hidden the guild anyway.")
-                            self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_unhide_guild_unknown"))
-                elif cmd == 'verifyme':
-                    return  # command disabled for now
-                    # if self.clientNeedsVerify(rec_from_uid):
-                    #     log.info("Verify Request Recieved from user '%s'. Sending PM now...\n        ...waiting for user response.", rec_from_name)
-                    #     self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_verify")))
-                    # else:
-                    #     log.info("Verify Request Recieved from user '%s'. Already verified, notified user.", rec_from_name)
-                    #     self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_alrdy_verified")))
+                            self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_hide_guild_help"))
+                    elif cmd == "unhideguild":
+                        if len(args) == 1:
+                            LOG.info("User '%s' wants to unhide guild '%s'.", rec_from_name, args[0])
+                            with self._database_connection.lock:
+                                self._database_connection.cursor.execute(
+                                    "DELETE FROM guild_ignores WHERE guild_id = (SELECT guild_id FROM guilds WHERE ts_group = ? AND ts_db_id = ?)",
+                                    (args[0], rec_from_uid))
+                                changes = self._database_connection.cursor.execute("SELECT changes()").fetchone()[0]
+                                self._database_connection.conn.commit()
+                                if changes > 0:
+                                    LOG.debug("Success!")
+                                    self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_unhide_guild_success"))
+                                else:
+                                    LOG.debug("Failed. Either the guild is unknown or the user had not hidden the guild anyway.")
+                                    self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_unhide_guild_unknown"))
+                        else:
+                            self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_unhide_guild_help"))
+                    elif cmd == 'verifyme':
+                        return  # command disabled for now
+                        # if self.clientNeedsVerify(rec_from_uid):
+                        #     log.info("Verify Request Recieved from user '%s'. Sending PM now...\n        ...waiting for user response.", rec_from_name)
+                        #     self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_verify")))
+                        # else:
+                        #     log.info("Verify Request Recieved from user '%s'. Already verified, notified user.", rec_from_name)
+                        #     self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_alrdy_verified")))
 
             # Type 1 means it was a private message
             elif rec_type == '1':
+                LOG.info("Received Private Chat Message from %s (%s) : %s", rec_from_name, rec_from_uid, message)
 
                 # reg_api_auth='\s*(\S+\s*\S+\.\d+)\s+(.*?-.*?-.*?-.*?-.*)\s*$'
                 reg_api_auth = r'\s*(.*?-.*?-.*?-.*?-.*)\s*$'
 
                 # Command for verifying authentication
-                if re.match(reg_api_auth, raw_cmd):
-                    pair = re.search(reg_api_auth, raw_cmd)
+                if re.match(reg_api_auth, message):
+                    pair = re.search(reg_api_auth, message)
                     uapi = pair.group(1)
 
                     if self.clientNeedsVerify(rec_from_uid):
@@ -482,7 +499,7 @@ class Bot:
                         self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_alrdy_verified"))
                 else:
                     self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_rcv_default"))
-                    LOG.info("Received bad response from %s [msg= %s]", rec_from_name, raw_cmd.encode('utf-8'))
+                    LOG.info("Received bad response from %s [msg= %s]", rec_from_name, message.encode('utf-8'))
                     # sys.exit(0)
         except Exception as ex:
             LOG.error("BOT Event: Something went wrong during message received from teamspeak server. Likely bad user command/message.")
