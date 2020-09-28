@@ -417,7 +417,7 @@ class Bot:
                                         self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_hide_guild_success"))
                                 except sqlite3.IntegrityError as ex:
                                     self._database_connection.conn.rollback()
-                                    LOG.error("Database error during hideguild", ex)
+                                    LOG.error("Database error during hideguild", exc_info=ex)
                                     self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_hide_guild_unknown"))
                         else:
                             self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_hide_guild_help"))
