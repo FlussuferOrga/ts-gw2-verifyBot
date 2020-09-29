@@ -25,5 +25,5 @@ class ResetRosterController(AbstractController):
             blue = try_get(body, "bbl", default=[])
             ebg = try_get(body, "ebg", default=[])
             LOG.info("Received request to set resetroster. RBL: %s GBL: %s, BBL: %s, EBG: %s", ", ".join(red), ", ".join(green), ", ".join(blue), ", ".join(ebg))
-            res = self._bot.setResetroster(date, red, green, blue, ebg)
+            res = self._bot.set_reset_roster(date, red, green, blue, ebg)
             return "OK" if res == 0 else abort(400, res)

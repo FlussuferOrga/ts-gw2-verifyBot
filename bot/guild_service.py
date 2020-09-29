@@ -6,8 +6,8 @@ import bot.gwapi as gw2api
 from bot.config import Config
 from bot.connection_pool import ConnectionPool
 from bot.db import ThreadSafeDBConnection
-from bot.emblem_downloader import download_guild_emblem
 from bot.ts import TS3Facade, User
+from .emblem_downloader import download_guild_emblem
 
 LOG = logging.getLogger(__name__)
 
@@ -189,8 +189,7 @@ class GuildService:
             # ADD CONTACTS #
             ################
             LOG.debug("Adding contacts...")
-            cgroups, _ = ts_facade.channelgroup_list()
-            contactgroup = next((cg for cg in cgroups if cg.get("name") == self._config.guild_contact_channel_group), None)
+            contactgroup = self._find_contact_group(ts_facade)
             if contactgroup is None:
                 LOG.debug("Can not find a group for guild contacts. Skipping.")
             else:
@@ -200,19 +199,24 @@ class GuildService:
                         for acc in accs:
                             try:
                                 user = User(ts_facade, unique_id=acc)
-                                user = User(ts_facade, unique_id=acc)
                                 ex = ts_facade.set_client_channelgroup(channel_id=cinfo.get("cid"), channelgroup_id=contactgroup.get("cgid"), client_db_id=user.ts_db_id)
                                 # while we are at it, add the contacts to the guild group as well
                                 ts_facade.servergroup_client_add(servergroup_id=guild_servergroup_id, client_db_id=user.ts_db_id)
 
                                 errored = ex is not None
-                            except Exception:
-                                errored = True
+                            except Exception as ex:
+                                errored = ex
                             if errored:
                                 LOG.error("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in "
                                           "guild channel for %s. Maybe the uid is not valid anymore.",
-                                          self._config.guild_contact_channel_group, c, acc, guild_name)
+                                          self._config.guild_contact_channel_group, c, acc, guild_name, exc_info=ex)
             return SUCCESS
+
+    def _find_contact_group(self, ts_facade):
+        cgroups, _ = ts_facade.channelgroup_list()
+        # check type == 1 to filter out template groups
+        contactgroup = next((cg for cg in cgroups if cg.get("name") == self._config.guild_contact_channel_group and cg.get("type") == "1"), None)
+        return contactgroup
 
     def _create_guild_servergroup_permissions(self, icon_id):
         perms = [

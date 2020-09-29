@@ -94,8 +94,13 @@ class TS3Facade:
                                                                         permskip=1 if skip else 0))
 
     def channel_add_permissions(self, channel_id: str, permissions: List[Tuple[str, int]]):
-        for permission_id, permission_value in permissions:
-            self.channel_add_permission(channel_id, permission_id=permission_id, permission_value=permission_value)
+        def query(tsc):
+            query_builder = tsc.query("channeladdperm", cid=channel_id)
+            for permission_id, permission_value in permissions:
+                query_builder = query_builder.pipe(permsid=permission_id, permvalue=permission_value, permnegated=0, permskip=0)
+            return query_builder.fetch()
+
+        return self._ts3_connection.ts3exec_raise(query)
 
     def channel_list(self) -> List[ChannelListDetail]:
         return self._ts3_connection.ts3exec_raise(lambda tc: tc.query("channellist").all())
@@ -148,8 +153,13 @@ class TS3Facade:
                                             signal_exception_handler)
 
     def servergroup_add_permissions(self, servergroup_id: str, permissions: List[Tuple[str, int]]):
-        for permission_id, permission_value in permissions:
-            self.servergroup_add_permission(servergroup_id, permission_id=permission_id, permission_value=permission_value)
+        def query(tsc):
+            query_builder = tsc.query("servergroupaddperm", sgid=servergroup_id)
+            for permission_id, permission_value in permissions:
+                query_builder = query_builder.pipe(permsid=permission_id, permvalue=permission_value, permnegated=0, permskip=0)
+            return query_builder.fetch()
+
+        return self._ts3_connection.ts3exec(query, signal_exception_handler)
 
     def channelgroup_list(self):
         return self._ts3_connection.ts3exec(lambda tsc: tsc.query("channelgrouplist").all(), signal_exception_handler)

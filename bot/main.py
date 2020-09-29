@@ -3,7 +3,7 @@ import logging
 from argparse import Namespace
 from typing import Tuple
 
-import configargparse as configargparse
+import configargparse
 import schedule
 import time  # time for sleep function
 import ts3

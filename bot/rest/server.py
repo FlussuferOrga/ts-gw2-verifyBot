@@ -68,7 +68,7 @@ def register_controllers(app, bot):
         HealthController(),
         GuildController(bot.guild_service),
         ResetRosterController(bot),
-        OtherController(bot),
+        OtherController(bot.user_service, bot.commander_service),
     ]
     for ctrl in controller:
         app.register_blueprint(ctrl.api)
