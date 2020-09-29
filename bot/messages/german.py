@@ -64,12 +64,18 @@ class German(Locale):
                  + self.get("bot_msg_example") + self.get("bot_msg_note"))
 
         # User successfully hid a guild
-        self.set("bot_hide_guild_success", "Okay, ich werde dir diese Gruppe bei der Revalidierung nichtmehr geben. Du kannst die Gruppe jederzeit wieder [b]unhide[/b]n.")
+        self.set("bot_hide_guild_success", "Okay, ich werde dir diese Gruppe bei der Revalidierung nichtmehr geben. Du kannst die Gruppe jederzeit wieder [b]unhideguild[/b]n.")
 
         # User passed an invalid guild
         self.set("bot_hide_guild_unknown",
                  "Tut mir Leid, eine solche Gilde scheint es nicht zu geben oder du hast sie bereits versteckt. "
                  "Bitte stelle sicher, dass du die exakte Schreibweise der Gildengruppe hier im Teamspeak verwendest.")
+
+        # User passed an invalid hide guild command
+        self.set("bot_hide_guild_help", "Bitte nutze folgendes Format: hideguild TAG")
+
+        # User passed an invalid unhide guild command
+        self.set("bot_unhide_guild_help", "Bitte nutze folgendes Format: unhideguild TAG")
 
         # User successfully hid a guild
         self.set("bot_unhide_guild_success", "Okay, du wirst die Gruppe bei der nächsten Revalidierung wieder erhalten, wenn du dazu berechtigt bist.")

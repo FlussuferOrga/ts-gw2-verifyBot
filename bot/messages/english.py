@@ -54,10 +54,16 @@ class English(Locale):
                      "bot_msg_example") + self.get("bot_msg_note"))
 
         # User successfully hid a guild
-        self.set("bot_hide_guild_success", "Okay, I will not give you this tag again upon revalidation. You can [b]unhide[/b] the tag at any time.")
+        self.set("bot_hide_guild_success", "Okay, I will not give you this tag again upon revalidation. You can [b]unhideguild[/b] the tag at any time.")
 
         # User passed an invalid guild
         self.set("bot_hide_guild_unknown", "Sorry, there seems to be no such guild or you have already hidden it. Please make sure you use the exact spelling that is used for the TS group.")
+
+        # User passed an invalid hide guild command
+        self.set("bot_hide_guild_help", "Please use the following format: hideguild TAG")
+
+        # User passed an invalid unhide guild command
+        self.set("bot_unhide_guild_help", "Please use the following format: unhideguild TAG")
 
         # User successfully hid a guild
         self.set("bot_unhide_guild_success", "Okay, you will receive this group with the next revalidation, if you are entitled to get it.")
