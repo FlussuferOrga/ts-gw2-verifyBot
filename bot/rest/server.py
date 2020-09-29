@@ -6,7 +6,8 @@ import waitress  # productive serve
 from flask import Flask, render_template
 from werkzeug.exceptions import HTTPException
 
-from bot.rest.controller import GuildController, HealthController, OtherController, ResetRosterController
+from bot.rest.controller import CommandersController, GuildController, HealthController, RegistrationController, \
+    ResetRosterController
 from bot.rest.utils import error_response
 
 LOG = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ def create_http_server(bot, port=8080):
     app = HTTPServer(bot, port)
     flask_cors.CORS(app)
 
-    register_controllers(app, bot)
+    register_controller(app, bot)
     register_error_handlers(flask=app)
 
     register_open_api_endpoints(app)
@@ -63,12 +64,13 @@ def register_open_api_endpoints(app):
         return app.send_static_file('openapi-spec.yaml')
 
 
-def register_controllers(app, bot):
+def register_controller(app, bot):
     controller = [
         HealthController(),
         GuildController(bot.guild_service),
-        ResetRosterController(bot),
-        OtherController(bot.user_service, bot.commander_service),
+        ResetRosterController(bot.reset_roster_service),
+        RegistrationController(bot.user_service),
+        CommandersController(bot.commander_service)
     ]
     for ctrl in controller:
         app.register_blueprint(ctrl.api)

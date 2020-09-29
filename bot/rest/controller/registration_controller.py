@@ -1,28 +1,20 @@
 import logging
 
 from flask import request
-from werkzeug.exceptions import abort
 
 from bot import UserService
-from bot.commander_service import CommanderService
 from bot.rest.controller.abstract_controller import AbstractController
 from bot.rest.utils import try_get
 
 LOG = logging.getLogger(__name__)
 
 
-class OtherController(AbstractController):
-    def __init__(self, user_service: UserService, commander_service: CommanderService):
+class RegistrationController(AbstractController):
+    def __init__(self, user_service: UserService):
         super().__init__()
         self._user_service = user_service
-        self._commander_service = commander_service
 
     def _routes(self):
-        @self.api.route("/commanders", methods=["GET"])
-        def _active_commanders():
-            acs = self._commander_service.get_active_commanders()
-            return acs if acs is not None else abort(503)
-
         @self.api.route("/registration", methods=["DELETE"])
         def _delete_registration():
             body = request.json
