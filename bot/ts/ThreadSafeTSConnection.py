@@ -84,13 +84,6 @@ class ThreadSafeTSConnection:
         if self._bot_nickname is not None:
             self.force_rename(self._bot_nickname)
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, tb):
-        self.close()
-        return None
-
     def keepalive(self):
         LOG.debug(f"Keepalive Ts Connection {self._bot_nickname}")
         self.ts3exec(lambda tc: tc.send_keepalive())
@@ -123,7 +116,6 @@ class ThreadSafeTSConnection:
 
         returns a tuple with the results of the two handlers (result first, exception result second).
         """
-        reinit = False
         with self.lock:
             failed = True
             fails = 0
@@ -133,31 +125,38 @@ class ThreadSafeTSConnection:
                 failed = False
                 try:
                     res = handler(self.ts_connection)
-                except ts3.query.TS3TransportError:
+                except ts3.query.TS3TransportError as ts3tex:
                     failed = True
                     fails += 1
-                    LOG.error("Critical error on transport level! Attempt %s to restart the connection and send the command again.", str(fails), )
-                    reinit = True
+                    if fails >= ThreadSafeTSConnection.RETRIES:
+                        LOG.error("Critical error on transport level! Closing this Connection.", exc_info=ts3tex)
+                        self.close()
+                        raise ts3tex
+                    else:
+                        LOG.error("Error on transport level! Attempt %s to send the command again.", str(fails), )
                 except Exception as ex:
                     exres = exception_handler(ex)
-        if reinit:
-            self.init()
         return res, exres
 
     def close(self):
-        LOG.info("Closing %s", self)
-        if self._keepalive_job is not None:
-            schedule.cancel_job(self._keepalive_job)
+        with self.lock:
+            LOG.info("Closing %s", self)
+            if self._keepalive_job is not None:
+                schedule.cancel_job(self._keepalive_job)
 
-        # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
-        if self.ts_connection is not None:
-            try:
-                self.ts_connection.exec_("quit")  # send quit
-                self.ts_connection.close()  # immediately quit
-            except Exception as ex:
-                LOG.debug("Exception during closing the connection. This is usually not a problem.", exc_info=ex)
-            finally:
-                del self.ts_connection
+            # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
+            if self.ts_connection is not None \
+                    and hasattr(self.ts_connection, "is_connected") \
+                    and self.ts_connection.is_connected():
+                try:
+                    self.ts_connection.exec_("quit")  # send quit
+                    self.ts_connection.close()  # immediately quit
+                except ts3.query.TS3TransportError:
+                    pass
+                except Exception as ex:
+                    LOG.debug("Exception during closing the connection. This is usually not a problem.", exc_info=ex)
+                finally:
+                    self.ts_connection = None
 
     def _gentle_rename(self, nickname):
         """
