@@ -19,6 +19,11 @@ def default_exception_handler(ex):
     return ex
 
 
+def raise_exception_handler(ex):
+    """ raises the exception for further inspection """
+    raise ex
+
+
 def signal_exception_handler(ex):
     """ returns the exception without printing it, useful for expected exceptions, signaling that an exception occurred """
     return ex
@@ -61,32 +66,34 @@ class ThreadSafeTSConnection:
         self.lock = RLock()
         self.ts_connection = None  # done in init()
         self._keepalive_job = None
-        self.init()
+        self._init()
 
-    def init(self):
-        if self.ts_connection is not None:
-            try:
-                self.ts_connection.close()
-            except Exception:
-                pass  # may already be closed, doesn't matter.
-        self.ts_connection = ts3.query.TS3ServerConnection(self.uri)
+    def _init(self):
+        with self.lock:  # lock for good measure
+            if self.ts_connection is not None:
+                pass
+            self.ts_connection = ts3.query.TS3ServerConnection(self.uri)
 
-        # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
-        self.ts_connection.COMMAND_SET = set(self.ts_connection.COMMAND_SET)  # creat copy of frozenset
-        self.ts_connection.COMMAND_SET.add('quit')  # add command
+            # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
+            self.ts_connection.COMMAND_SET = set(self.ts_connection.COMMAND_SET)  # creat copy of frozenset
+            self.ts_connection.COMMAND_SET.add('quit')  # add command
 
-        if self._keepalive_interval is not None:
-            if self._keepalive_job is not None:
-                schedule.cancel_job(self._keepalive_job)  # to avoid accumulating keepalive calls during re-inits
-            self._keepalive_job = schedule.every(self._keepalive_interval).seconds.do(self.keepalive)
-        if self._server_id is not None:
-            self.ts3exec(lambda tc: tc.exec_("use", sid=self._server_id))
-        if self._bot_nickname is not None:
-            self.force_rename(self._bot_nickname)
+            if self._keepalive_interval is not None:
+                self._keepalive_job = schedule.every(self._keepalive_interval).seconds.do(self.keepalive)
+
+            if self._server_id is not None:
+                self.ts3exec(lambda tc: tc.exec_("use", sid=self._server_id))
+
+            if self._bot_nickname is not None:
+                self.force_rename(self._bot_nickname)
 
     def keepalive(self):
         LOG.debug(f"Keepalive Ts Connection {self._bot_nickname}")
-        self.ts3exec(lambda tc: tc.send_keepalive())
+        with self.lock:
+            self.ts3exec(lambda tc: tc.send_keepalive())
+
+    def ts3exec_raise(self, handler: Callable[[TS3ServerConnection], R]) -> R:
+        return self.ts3exec(handler, raise_exception_handler)[0]
 
     def ts3exec(self,
                 handler: Callable[[TS3ServerConnection], R],

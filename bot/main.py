@@ -1,53 +1,60 @@
 #!/usr/bin/python
 import logging
 from argparse import Namespace
-from typing import Optional, Tuple
+from typing import Tuple
 
 import configargparse as configargparse
 import schedule
-import sys
 import time  # time for sleep function
 import ts3
-from ts3.response import TS3Event
 
 from bot import Bot
 from bot.config import Config
 from bot.connection_pool import ConnectionPool
 from bot.db import get_or_create_database
-from bot.rest import HTTPServer
 from bot.rest import server
-from bot.ts import Channel, TS3Facade, create_connection
+from bot.ts import TS3Facade, create_connection
 
 LOG = logging.getLogger(__name__)
 
-# Global states
-verify_channel: Optional[Channel] = None
-http_server: Optional[HTTPServer] = None
-
 
 def main(args: Namespace):  #
-    global verify_channel, http_server
-
     LOG.info("Initializing script....")
 
     config = Config(args.config_path)
-    database = get_or_create_database(config.db_file_name, config.current_version)
 
+    # setup ressoruces
+    database = get_or_create_database(config.db_file_name, config.current_version)
     ts_connection_pool: ConnectionPool[TS3Facade] = create_connection_pool(config)
 
+    # create bot instance and let it loop
+    _continuous_loop(config, database, ts_connection_pool)
+
+    # release resources gracefully
+
+    LOG.info("Stopping Connection Pool...")
+    ts_connection_pool.close()
+
+    LOG.info("Closing Database Connection...")
+    database.close()
+
+    LOG.info("Bye!")
+
+
+def _continuous_loop(config, database, ts_connection_pool):
     #######################################
     # Begins the connect to Teamspeak
     #######################################
     bot_loop_forever = True
     while bot_loop_forever:
         try:
-            try:
-                LOG.info("Connecting to Teamspeak server...")
+            LOG.info("Connecting to Teamspeak server...")
 
-                with ts_connection_pool.item() as ts_facade:
-                    bot_instance = Bot(database, ts_connection_pool, ts_facade, config)
+            with ts_connection_pool.item() as ts_facade:
+                bot_instance = Bot(database, ts_connection_pool, ts_facade, config)
 
-                    http_server = server.create_http_server(bot_instance, port=config.ipc_port)
+                http_server = server.create_http_server(bot_instance, port=config.ipc_port)
+                try:
                     http_server.start()
 
                     LOG.info("BOT Database Audit policies initiating.")
@@ -55,65 +62,23 @@ def main(args: Namespace):  #
                     # times before audit interval hits, so we can ensure we maintain user database accurately)
                     bot_instance.trigger_user_audit()
 
-                    # Set audit schedule job to run in X days
-                    schedule.every(config.audit_interval).days.do(bot_instance.trigger_user_audit)
+                    #                     # Set audit schedule job to run in X days
+                    audit_job = schedule.every(config.audit_interval).days.do(bot_instance.trigger_user_audit)
 
-                    # Find the verify channel
-                    verify_channel = find_verify_channel(ts_facade, config.channel_name)
+                    bot_instance.listen_for_events()
+                finally:
+                    if audit_job is not None:
+                        schedule.cancel_job(audit_job)
 
-                    # Move ourselves to the Verify chanel and register for text events
-                    move_to_channel(ts_facade, verify_channel, bot_instance.client_id, config.channel_name)
-                    ts_facade.server_notify_register(["textchannel", "textprivate", "server"])
-
-                    LOG.info("BOT now online,sending broadcast.")
-                    bot_instance.broadcastMessage()  # Send initial message into channel
-
-                    # Forces script to loop forever while we wait for events to come in, unless connection timed out. Then it should loop a new bot into creation.
-                    LOG.info("BOT now idle, waiting for requests.")
-                    while ts_facade.is_connected():
-                        # auditjob + keepalive check
-                        schedule.run_pending()
-
-                        try:
-                            response: TS3Event = ts_facade.wait_for_event(timeout=config.bot_sleep_idle)
-                            if response is not None:
-                                event_type: str = response.event
-                                event_data = response.parsed[0]
-
-                                _handle_event(bot_instance, event_data, event_type)
-                        except (ConnectionRefusedError, ts3.query.TS3TransportError) as ex:
-                            raise ex  # connection errors should lead to a restart of the bot instance -> raise
-                        except Exception as ex:
-                            LOG.error("Error while handling the event", exc_info=ex)
-
-                LOG.warning("It appears the BOT has lost connection to teamspeak. Trying to restart connection in %s seconds....", config.bot_sleep_conn_lost)
-                time.sleep(config.bot_sleep_conn_lost)
-
-            except (ConnectionRefusedError, ts3.query.TS3TransportError) as ex:
-                LOG.warning("Unable to reach teamspeak server..trying again in %s seconds...", config.bot_sleep_conn_lost, exc_info=ex)
-                time.sleep(config.bot_sleep_conn_lost)
+                    if http_server is not None:
+                        LOG.info("Stopping Http Server")
+                        http_server.stop()
+        except (ConnectionRefusedError, ts3.query.TS3TransportError) as ex:
+            LOG.warning("Unable to reach teamspeak server..trying again in %s seconds...", config.bot_sleep_conn_lost, exc_info=ex)
+            time.sleep(config.bot_sleep_conn_lost)
         except (KeyboardInterrupt, SystemExit):
-            LOG.info("Stopping Connection Pool...")
-            ts_connection_pool.close()
-
-            LOG.info("Stopping Http Server")
-            http_server.stop()
-
-            LOG.info("Bye!")
-            sys.exit(0)
-
-
-def _handle_event(bot_instance, event_data, event_type):
-    if event_type == 'notifytextmessage':  # text message
-        if "msg" in event_data:
-            bot_instance.messageEventHandler(event_data)  # handle event
-    elif event_type == 'notifycliententerview':
-        if event_data["client_type"] == '0':  # no server query client
-            bot_instance.loginEventHandler(event_data)  # handle event
-    elif event_type == 'notifyclientleftview':  # client left
-        pass  # this event is not of interest
-    else:
-        LOG.warning("Unhandled Event: %s", event_type)
+            LOG.info("Shutdown signal received. Shutting down:")
+            bot_loop_forever = False  # stop loop
 
 
 def create_connection_pool(config):
@@ -144,24 +109,5 @@ def parse_args() -> Tuple[Namespace, configargparse.ArgumentParser]:
                         default="./ts3bot.log")
     args: Namespace = parser.parse_args()
     return args, parser
-
-
-def move_to_channel(ts_facade, channel: Channel, client_id, channel_name):
-    chnl_err = ts_facade.client_move(client_id=client_id, channel_id=channel.channel_id)
-    if chnl_err:
-        LOG.warning("BOT Attempted to join channel '%s' (%s): %s", channel_name, channel.channel_id, chnl_err.resp.error["msg"])
-    else:
-        LOG.info("BOT has joined channel '%s' (%s).", channel_name, channel.channel_id)
-
-
-def find_verify_channel(ts_repository, channel_name):
-    found_channel = None
-    while found_channel is None:
-        found_channel = ts_repository.channel_find(channel_name)
-        if found_channel is None:
-            LOG.warning("Unable to locate channel with name '%s'. Sleeping for 10 seconds...", channel_name)
-            time.sleep(10)
-        else:
-            return found_channel
 
 #######################################

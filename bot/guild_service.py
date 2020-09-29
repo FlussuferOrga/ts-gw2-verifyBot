@@ -116,7 +116,7 @@ class GuildService:
                 # CREATE CHANNEL AND SUBCHANNELS #
                 ##################################
                 LOG.debug("Creating guild channel ...")
-                channel_list, _ = ts_facade.channel_list()
+                channel_list = ts_facade.channel_list()
 
                 # assert channel and group both exist and parent channel is available
                 all_guild_channels = [c for c in channel_list if c.get("pid") == parent.channel_id]

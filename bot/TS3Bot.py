@@ -4,15 +4,17 @@ import logging
 import re
 import sqlite3  # Database
 import threading
-import traceback
 
+import schedule
+import time
 import ts3
 from ts3.query import TS3QueryError
+from ts3.response import TS3Event
 
 from bot.command_checker import CommanderChecker
 from bot.config import Config
 from bot.db import ThreadSafeDBConnection
-from bot.ts import TS3Facade, User
+from bot.ts import Channel, TS3Facade, User
 from bot.util import StringShortener
 from .TS3Auth import AuthRequest
 from .audit_service import AuditService
@@ -40,7 +42,7 @@ class Bot:
         self.audit_service = AuditService(self._database_connection, self._ts_connection_pool, config, self)
         self.guild_service = GuildService(self._database_connection, self._ts_connection_pool, config)
 
-        admin_data, _ = self._ts_facade.whoami()
+        admin_data = self._ts_facade.whoami()
         self.name = admin_data.get('client_login_name')
         self.client_id = admin_data.get('client_id')
 
@@ -262,9 +264,11 @@ class Bot:
             LOG.debug("TODAY |%s|  NEXT AUDIT |%s|", self.c_audit_date, audit_last_audit_date + datetime.timedelta(days=self._config.audit_period))
 
             if self.c_audit_date >= audit_last_audit_date + datetime.timedelta(days=self._config.audit_period):  # compare audit date
-                ts_uuid = self._ts_facade.client_db_id_from_uid(audit_ts_id)
+                with self._ts_connection_pool.item() as ts_connection:
+                    ts_uuid = ts_connection.client_db_id_from_uid(audit_ts_id)
                 if ts_uuid is None:
                     LOG.info("User %s is not found in TS DB and could be deleted.", audit_account_name)
+                    self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", ((datetime.date.today()), audit_ts_id,))
                     # self.removeUserFromDB(audit_ts_id)
                 else:
                     LOG.info("User %s is due for auditing! Queueing", audit_account_name)
@@ -281,7 +285,7 @@ class Bot:
             api_key = db_entry["api_key"]
             self.audit_service.queue_user_audit(QUEUE_PRIORITY_JOIN, account_name=account_name, api_key=api_key, client_unique_id=client_unique_id)
 
-    def broadcastMessage(self):
+    def _broadcast_message(self):
         broadcast_message = self._config.locale.get("bot_msg_broadcast")
         self._ts_facade.send_text_message_to_current_channel(msg=broadcast_message)
 
@@ -492,7 +496,65 @@ class Bot:
                     LOG.info("Received bad response from %s [msg= %s]", rec_from_name, raw_cmd.encode('utf-8'))
                     # sys.exit(0)
         except Exception as ex:
-            LOG.error("BOT Event: Something went wrong during message received from teamspeak server. Likely bad user command/message.")
-            LOG.error(ex)
-            LOG.error(traceback.format_exc())
+            LOG.error("BOT Event: Something went wrong during message received from teamspeak server. Likely bad user command/message.", exc_info=ex)
         return None
+
+    def listen_for_events(self):
+        # Find the verify channel
+        verify_channel = self._find_verify_channel()
+        # Move ourselves to the Verify channel
+        self._move_to_channel(verify_channel, self.client_id)
+        # register for text events
+        self._ts_facade.server_notify_register(["textchannel", "textprivate", "server"])
+
+        LOG.info("BOT now online,sending broadcast.")
+        self._broadcast_message()  # Send initial message into channel
+
+        # Forces script to loop forever while we wait for events to come in, unless connection timed out or exception occurs.
+        # Then it should loop a new bot into creation.
+        LOG.info("BOT now idle, waiting for requests.")
+
+        while self._ts_facade.is_connected():
+            # auditjob trigger + keepalives
+            schedule.run_pending()
+
+            response: TS3Event = self._ts_facade.wait_for_event(timeout=self._config.bot_sleep_idle)
+            if response is not None:
+                event_type: str = response.event
+                event_data = response.parsed[0]
+
+                try:
+                    self._handle_event(event_data, event_type)
+                except Exception as ex:
+                    LOG.error("Error while handling the event", exc_info=ex)
+
+    def _handle_event(self, event_data, event_type):
+        if event_type == 'notifytextmessage':  # text message
+            if "msg" in event_data:
+                self.messageEventHandler(event_data)  # handle event
+        elif event_type == 'notifycliententerview':
+            if event_data["client_type"] == '0':  # no server query client
+                self.loginEventHandler(event_data)  # handle event
+        elif event_type == 'notifyclientleftview':  # client left
+            pass  # this event is not of interest
+        else:
+            LOG.warning("Unhandled Event: %s", event_type)
+
+    def _move_to_channel(self, channel: Channel, client_id):
+        chnl_err = self._ts_facade.client_move(client_id=client_id, channel_id=channel.channel_id)
+        if chnl_err:
+            LOG.warning("BOT Attempted to join channel '%s' (%s): %s", channel.channel_name, channel.channel_id, chnl_err.resp.error["msg"])
+        else:
+            LOG.info("BOT has joined channel '%s' (%s).", channel.channel_name, channel.channel_id)
+
+    def _find_verify_channel(self):
+        channel_name = self._config.channel_name
+
+        found_channel = None
+        while found_channel is None:
+            found_channel = self._ts_facade.channel_find(channel_name)
+            if found_channel is None:
+                LOG.warning("Unable to locate channel with name '%s'. Sleeping for 10 seconds...", channel_name)
+                time.sleep(10)
+            else:
+                return found_channel

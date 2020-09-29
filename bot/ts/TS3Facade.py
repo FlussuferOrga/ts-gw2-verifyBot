@@ -22,15 +22,17 @@ class TS3Facade:
         self._ts3_connection.close()
 
     def is_connected(self):
-        return self._ts3_connection.ts3exec(lambda tc: tc.is_connected())[0]
+        return self._ts3_connection.ts3exec_raise(lambda tc: tc.is_connected())  # and self.version() is not None
+
+    def version(self):
+        return self._ts3_connection.ts3exec_raise(lambda tc: tc.query("version").first())
 
     def wait_for_event(self, timeout: int):
-        resp, ex = self._ts3_connection.ts3exec(lambda tc: tc.wait_for_event(timeout=timeout), signal_exception_handler)
-        if ex is None:
-            return resp
-        if isinstance(ex, TS3TimeoutError):
+        try:
+            resp = self._ts3_connection.ts3exec_raise(lambda tc: tc.wait_for_event(timeout=timeout))
+        except TS3TimeoutError:
             return None
-        raise ex
+        return resp
 
     def send_text_message_to_client(self, target_client_id: int, msg: str):
         self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode=1, target=target_client_id, msg=msg))
@@ -85,25 +87,24 @@ class TS3Facade:
         return ts_exec
 
     def channel_add_permission(self, channel_id: str, permission_id: str, permission_value: int, negated: bool = False, skip: bool = False):
-        return self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("channeladdperm",
-                                                                  cid=channel_id, permsid=permission_id,
-                                                                  permvalue=permission_value,
-                                                                  permnegated=1 if negated else 0,
-                                                                  permskip=1 if skip else 0),
-                                            signal_exception_handler)
+        return self._ts3_connection.ts3exec_raise(lambda tsc: tsc.exec_("channeladdperm",
+                                                                        cid=channel_id, permsid=permission_id,
+                                                                        permvalue=permission_value,
+                                                                        permnegated=1 if negated else 0,
+                                                                        permskip=1 if skip else 0))
 
     def channel_add_permissions(self, channel_id: str, permissions: List[Tuple[str, int]]):
         for permission_id, permission_value in permissions:
             self.channel_add_permission(channel_id, permission_id=permission_id, permission_value=permission_value)
 
-    def channel_list(self) -> Tuple[List[ChannelListDetail], Exception]:
-        return self._ts3_connection.ts3exec(lambda tc: tc.query("channellist").all(), signal_exception_handler)
+    def channel_list(self) -> List[ChannelListDetail]:
+        return self._ts3_connection.ts3exec_raise(lambda tc: tc.query("channellist").all())
 
     def use(self, server_id: int):
-        self._ts3_connection.ts3exec(lambda tc: tc.exec_("use", sid=server_id))
+        self._ts3_connection.ts3exec_raise(lambda tc: tc.exec_("use", sid=server_id))
 
     def whoami(self) -> Tuple[WhoamiResponse, Exception]:
-        return self._ts3_connection.ts3exec(lambda ts_con: ts_con.query("whoami").first())
+        return self._ts3_connection.ts3exec_raise(lambda ts_con: ts_con.query("whoami").first())
 
     def upload_icon(self, icon_id, icon_data):
         def _ts_file_upload_hook(ts3_response: ts3.response.TS3QueryResponse):
@@ -191,10 +192,10 @@ class TS3Facade:
         return self._ts3_connection.ts3exec(lambda t: t.query("clientgetnamefromuid", cluid=client_uid).first())
 
     def client_get_name_from_dbid(self, client_dbid):
-        return self._ts3_connection.ts3exec(lambda t: t.query("clientgetnamefromdbid", cldbid=client_dbid).first())[0]
+        return self._ts3_connection.ts3exec_raise(lambda t: t.query("clientgetnamefromdbid", cldbid=client_dbid).first())
 
     def client_info(self, client_id: str):
-        return self._ts3_connection.ts3exec(lambda t: t.query("clientinfo", clid=client_id).first())[0]
+        return self._ts3_connection.ts3exec_raise(lambda t: t.query("clientinfo", clid=client_id).first())
 
     def client_db_id_from_uid(self, client_uid) -> Optional[str]:
         response, ex = self._ts3_connection.ts3exec(lambda t: t.query("clientgetdbidfromuid", cluid=client_uid).first().get("cldbid"), exception_handler=signal_exception_handler)
@@ -208,7 +209,7 @@ class TS3Facade:
         raise ex
 
     def client_ids_from_uid(self, client_uid):
-        return self._ts3_connection.ts3exec(lambda t: t.query("clientgetids", cluid=client_uid).all())[0]
+        return self._ts3_connection.ts3exec_raise(lambda t: t.query("clientgetids", cluid=client_uid).all())
 
     def force_rename(self, target_nickname: str):
         return self._ts3_connection.force_rename(target_nickname=target_nickname)
