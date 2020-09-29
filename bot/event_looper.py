@@ -3,6 +3,7 @@ import logging
 import re
 import sqlite3
 import threading
+from typing import Optional
 
 import schedule
 import time
@@ -33,7 +34,7 @@ class EventLooper:
 
         self._lock = threading.RLock()
 
-        self._ts_facade = None
+        self._ts_facade: Optional[TS3Facade] = None
         self._own_client_id = None
 
     def start(self):

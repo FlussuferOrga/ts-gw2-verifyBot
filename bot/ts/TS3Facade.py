@@ -21,6 +21,9 @@ class TS3Facade:
     def close(self):
         self._ts3_connection.close()
 
+    def __str__(self):
+        return f"TS3Facade[{self._ts3_connection}]"
+
     def is_connected(self):
         return self._ts3_connection.ts3exec_raise(lambda tc: tc.is_connected())  # and self.version() is not None
 
