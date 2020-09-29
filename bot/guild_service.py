@@ -248,6 +248,10 @@ class GuildService:
                 # sort guild groups to have users grouped by their guild tag alphabetically in channels
                 _, _ = ts_facade.servergroup_add_permission(g.get("sgid"), "i_client_talk_power", tp)
 
+                # sort guild groups in group list
+                sort_id = self._config.guilds_sort_id + i
+                _, _ = ts_facade.servergroup_add_permission(g.get("sgid"), "i_group_sort_id", sort_id)
+
     @staticmethod
     def _build_channel_name(guild_info) -> str:
         guild_name = guild_info.get("name")
