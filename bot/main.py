@@ -108,7 +108,7 @@ def _handle_event(bot_instance, event_data, event_type):
         if "msg" in event_data:
             bot_instance.messageEventHandler(event_data)  # handle event
     elif event_type == 'notifycliententerview':
-        if hasattr(event_data, "client_type") and event_data["client_type"] == '0':  # no server query client
+        if event_data["client_type"] == '0':  # no server query client
             bot_instance.loginEventHandler(event_data)  # handle event
     elif event_type == 'notifyclientleftview':  # client left
         pass  # this event is not of interest
