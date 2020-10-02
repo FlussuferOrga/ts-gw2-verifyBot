@@ -24,10 +24,10 @@ def download_guild_emblem(guild_id: str, icon_size: int = 128) -> Optional[bytes
         if EMBLEM_STATUS_HEADER in response.headers:
             if response.headers[EMBLEM_STATUS_HEADER] == "OK":
                 icon_image_data = response.content
-                if len(icon_image_data) > 100:  # check that response actually contains some data
-                    return icon_image_data
-                else:
+                if len(icon_image_data) <= 100:  # check that response actually contains some data
                     LOG.warning("Very small Response. Guild probably has no icon or an error occured.")
+                else:
+                    return icon_image_data
             elif response.headers[EMBLEM_STATUS_HEADER] == "NotFound":
                 LOG.info("No emblem found for guild.")
             else:

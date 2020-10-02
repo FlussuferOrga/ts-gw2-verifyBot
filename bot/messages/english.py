@@ -3,7 +3,7 @@ from bot.messages.locale import Locale
 
 class English(Locale):
     def __init__(self):
-        super(English, self).__init__()
+        super().__init__()
         self.set("bot_msg_example", "\n\nExample:\n\t\t7895D172-4991-9546-CB5B-78B015B0D8A72BC0E007-4FAF-48C3-9BF1-DA1OAD241266")
         self.set("bot_msg_note", "\n\nNOTE: Guild Wars 2 API keys can be created/deleted via ArenaNet site [URL]account.arena.net/applications[/URL].")
         self.set("bot_msg_verify", "Hello there! I believe you requested verification?\n\n"

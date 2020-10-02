@@ -1,9 +1,9 @@
 import logging
 
+from bot import ts
 from bot.config import Config
-from .connection_pool import ConnectionPool
-from .ts import TS3Facade
-from .util import StringShortener
+from bot.connection_pool import ConnectionPool
+from bot.util import StringShortener
 
 LOG = logging.getLogger(__name__)
 
@@ -11,30 +11,39 @@ TS3_MAX_SIZE_CHANNEL_NAME = 40
 
 
 class ResetRosterService:
-    def __init__(self, ts_connection_pool: ConnectionPool[TS3Facade], config: Config):
+    def __init__(self, ts_connection_pool: ConnectionPool[ts.TS3Facade], config: Config):
         self._config = config
         self._ts_connection_pool = ts_connection_pool
 
-    def set_reset_roster(self, date, red=[], green=[], blue=[], ebg=[]):
-        leads = ([], red, green, blue, ebg)  # keep RGB order! EBG as last! Pad first slot (header) with empty list
+    def set_reset_roster(self, date, red=None, green=None, blue=None, ebg=None):
+        leads = (
+            [],
+            red if red is not None else [],
+            green if green is not None else [],
+            blue if blue is not None else [],
+            ebg if ebg is not None else []
+        )  # keep RGB order! EBG as last! Pad first slot (header) with empty list
 
         with self._ts_connection_pool.item() as facade:
             channels = [(p, c.replace("$DATE", date)) for p, c in self._config.reset_channels]
-            for i in range(len(channels)):
-                pattern, clean = channels[i]
+            for i, reset_channel in enumerate(channels):
+                pattern, clean = reset_channel
                 lead = leads[i]
 
                 shortened = StringShortener(TS3_MAX_SIZE_CHANNEL_NAME - len(clean)).shorten(lead)
-                newname = "%s%s" % (clean, ", ".join(shortened))
+                new_channel_name = "%s%s" % (clean, ", ".join(shortened))
 
-                channel = facade.channel_find(pattern)
-                if channel is None:
-                    LOG.warning("No channel found with pattern '%s'. Skipping.", pattern)
-                    return
-
-                _, ts3qe = facade.channel_edit(channel_id=channel.channel_id, new_channel_name=newname)
-                if ts3qe is not None and ts3qe.resp.error["id"] == "771":
-                    # channel name already in use
-                    # probably not a bug (channel still unused), but can be a config problem
-                    LOG.info("Channel '%s' already exists. This is probably not a problem. Skipping.", newname)
+                self._rename_channel_if_exists(facade, pattern, new_channel_name)
         return 0
+
+    @staticmethod
+    def _rename_channel_if_exists(facade, channel_name_pattern, new_channel_name):
+        channel = facade.channel_find(channel_name_pattern)
+        if channel is None:
+            LOG.warning("No channel found with pattern '%s'. Skipping.", channel_name_pattern)
+        else:
+            _, ts3qe = facade.channel_edit(channel_id=channel.channel_id, new_channel_name=new_channel_name)
+            if ts3qe is not None and ts3qe.resp.error["id"] == "771":
+                # channel name already in use
+                # probably not a bug (channel still unused), but can be a config problem
+                LOG.info("Channel '%s' already exists. This is probably not a problem. Skipping.", new_channel_name)
