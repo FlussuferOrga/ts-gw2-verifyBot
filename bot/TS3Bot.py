@@ -36,8 +36,6 @@ class Bot:
         active_loop = EventLooper(self._database_connection, self._ts_connection_pool, self._config, self.user_service, self.audit_service)
         active_loop.start()
         del active_loop
-        pass
 
     def trigger_user_audit(self):
         self.audit_service.trigger_user_audit()
-        pass
