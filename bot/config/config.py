@@ -42,7 +42,6 @@ class Config:
         self.audit_period = int(configs.get("bot settings", "audit_period"))  # How long a single user can go without being audited
         self.audit_interval = int(configs.get("bot settings", "audit_interval"))  # how often the BOT audits all users
         self.client_restriction_limit = int(configs.get("bot settings", "client_restriction_limit"))
-        self.timer_msg_broadcast = int(configs.get("bot settings", "broadcast_message_timer"))
 
         # tryGet(config, section, key, default = None, lit_eval = False):
         self.purge_completely = self._try_get(configs, "bot settings", "purge_completely", False, True)

@@ -14,9 +14,6 @@ class English(Locale):
         # Banner that we send to all users upon initialization
         self.set("bot_msg", "%s is alive once again! If you require verification, please reconnect!")
 
-        # Broadcast message
-        self.set("bot_msg_broadcast", "Hello there! You can begin verification by typing 'verifyme' in this channel.")
-
         # Message sent for sucesful verification
         self.set("bot_msg_success", "Authentication was succesful! Thank you fellow adventurer. Please give our rules a read and have fun \\(^.^)/ If you don't see any people, please relog once.")
 

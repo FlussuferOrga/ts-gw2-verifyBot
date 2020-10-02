@@ -16,9 +16,6 @@ class German(Locale):
         # Banner that we send to all users upon initialization
         self.set("bot_msg", "%s ist wieder da! Falls du eine Freischaltung benötigst, verbinde dich bitte neu!")
 
-        # Broadcast message
-        self.set("bot_msg_broadcast", "Hallöchen! Du kannst die Freischaltung beginnen, indem du 'verifyme' in diesem Channel schreibst.")
-
         # Message sent for sucesful verification
         self.set("bot_msg_success",
                  "Freischaltung erfolgreich! Danke dir, Abenteurer."

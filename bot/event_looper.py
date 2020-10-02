@@ -44,9 +44,6 @@ class EventLooper:
 
                 self._set_up_connection()
 
-                LOG.info("BOT now online,sending broadcast.")
-                self._broadcast_message()  # Send initial message into channel
-
                 # Forces script to loop forever while we wait for events to come in, unless connection timed out or exception occurs.
                 # Then it should loop a new bot into creation.
                 LOG.info("BOT now idle, waiting for requests.")
@@ -256,7 +253,3 @@ class EventLooper:
                 toks = command_string.split()  # no argument for split() splits on arbitrary whitespace
                 return toks[0], toks[1:]
         return None, None
-
-    def _broadcast_message(self):
-        broadcast_message = self._config.locale.get("bot_msg_broadcast")
-        self._ts_facade.send_text_message_to_current_channel(msg=broadcast_message)
