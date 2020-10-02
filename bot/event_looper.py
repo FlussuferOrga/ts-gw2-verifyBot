@@ -175,15 +175,6 @@ class EventLooper:
                                     self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_unhide_guild_unknown"))
                         else:
                             self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_unhide_guild_help"))
-                    elif cmd == 'verifyme':
-                        return  # command disabled for now
-                        # if self.clientNeedsVerify(rec_from_uid):
-                        #     log.info("Verify Request Recieved from user '%s'. Sending PM now...\n        ...waiting for user response.", rec_from_name)
-                        #     self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_verify")))
-                        # else:
-                        #     log.info("Verify Request Recieved from user '%s'. Already verified, notified user.", rec_from_name)
-                        #     self.ts_connection.ts3exec(lambda tsc: tsc.exec_("sendtextmessage", targetmode = 1, target = rec_from_id, msg = Config.locale.get("bot_msg_alrdy_verified")))
-
             # Type 1 means it was a private message
             elif rec_type == '1':
                 LOG.info("Received Private Chat Message from %s (%s) : %s", rec_from_name, rec_from_uid, message)
@@ -196,7 +187,7 @@ class EventLooper:
                     pair = re.search(reg_api_auth, message)
                     uapi = pair.group(1)
 
-                    if self._user_service.clientNeedsVerify(rec_from_uid):
+                    if self._user_service.check_client_needs_verify(rec_from_uid):
                         LOG.info("Received verify response from %s", rec_from_name)
 
                         auth = AuthRequest(uapi, self._config.required_servers, int(self._config.required_level))
@@ -204,20 +195,20 @@ class EventLooper:
                         LOG.debug('Name: |%s| API: |%s|', auth.name, uapi)
 
                         if auth.success:
-                            limit_hit = self._user_service.TsClientLimitReached(auth.name)
+                            limit_hit = self._user_service.is_ts_registration_limit_reached(auth.name)
                             if self._config.DEBUG:
                                 LOG.debug("Limit hit check: %s", limit_hit)
                             if not limit_hit:
                                 LOG.info("Setting permissions for %s as verified.", rec_from_name)
 
                                 # set permissions
-                                self._user_service.setPermissions(rec_from_uid)
+                                self._user_service.set_permissions(rec_from_uid)
 
                                 # get todays date
                                 today_date = datetime.date.today()
 
                                 # Add user to database so we can query their API key over time to ensure they are still on our server
-                                self._user_service.addUserToDB(rec_from_uid, auth.name, uapi, today_date, today_date)
+                                self._user_service.add_user_to_database(rec_from_uid, auth.name, uapi, today_date, today_date)
                                 self._user_service.update_guild_tags(self._ts_facade, User(self._ts_facade, unique_id=rec_from_uid), auth)
                                 # self.updateGuildTags(rec_from_uid, auth)
                                 LOG.debug("Added user to DB with ID %s", rec_from_uid)
@@ -254,7 +245,7 @@ class EventLooper:
         if raw_clid == self._own_client_id:
             return
 
-        if self._user_service.clientNeedsVerify(raw_cluid):
+        if self._user_service.check_client_needs_verify(raw_cluid):
             self._ts_facade.send_text_message_to_client(raw_clid, self._config.locale.get("bot_msg_verify"))
         else:
             self._audit_service.audit_user_on_join(raw_cluid)

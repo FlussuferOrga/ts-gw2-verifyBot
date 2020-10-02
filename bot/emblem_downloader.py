@@ -14,7 +14,7 @@ def download_guild_emblem(guild_id: str, icon_size: int = 128) -> Optional[bytes
     Download a guild emblem from emblem.werdes.net and checks if the response contains a real emblem or a fallback placeholder
     :param guild_id: ID of the guild as returned from the gw2 api
     :param icon_size: Optional, size of the image. Anything over 128 is upscaled.
-    :return: Icon ID, Icon image data or both null
+    :return:Icon image data or null if not found
     """
     icon_url = f"https://emblem.werdes.net/emblem/{guild_id}/{icon_size}"
     LOG.debug("Downloading guild emblem from %s", icon_url)

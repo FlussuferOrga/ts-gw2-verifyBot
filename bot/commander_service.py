@@ -34,7 +34,7 @@ class CommanderService:
         with self._ts_connection_pool.item() as ts_facade:
             acs = ts_facade.channelgroup_client_list(self._commander_groups)
             LOG.info(acs)
-            active_commanders_entries = [(c, self._user_service.getUserDBEntry(ts_facade.client_get_name_from_dbid(client_dbid=c.get("cldbid")).get("cluid"))) for c in acs]
+            active_commanders_entries = [(c, self._user_service.get_user_database_entry(ts_facade.client_get_name_from_dbid(client_dbid=c.get("cldbid")).get("cluid"))) for c in acs]
             for ts_entry, db_entry in active_commanders_entries:
                 if db_entry is not None:  # or else the user with the commander group was not registered and therefore not in the DB
                     user = User(ts_facade, ts_db_id=ts_entry.get("cldbid"))

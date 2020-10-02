@@ -99,7 +99,7 @@ class UserService:
                 return group.get('sgid')
         return -1
 
-    def clientNeedsVerify(self, unique_client_id):
+    def check_client_needs_verify(self, unique_client_id):
         with self._ts_connection_pool.item() as ts_facade:
             client_db_id = ts_facade.client_db_id_from_uid(unique_client_id)
             if client_db_id is None:
@@ -113,12 +113,12 @@ class UserService:
         with self._database_connection.lock:
             current_entries = self._database_connection.cursor.execute("SELECT * FROM users WHERE ts_db_id=?", (unique_client_id,)).fetchall()
             if len(current_entries) > 0:
-                self.setPermissions(unique_client_id)
+                self.set_permissions(unique_client_id)
                 return False
 
         return True  # User not verified
 
-    def setPermissions(self, unique_client_id):
+    def set_permissions(self, unique_client_id):
         try:
             # Add user to group
             with self._ts_connection_pool.item() as facade:
@@ -133,7 +133,7 @@ class UserService:
         except ts3.query.TS3QueryError as err:
             LOG.error("Setting permissions failed: %s", err)  # likely due to bad client id
 
-    def removePermissions(self, unique_client_id):
+    def remove_permissions(self, unique_client_id):
         try:
             with self._ts_connection_pool.item() as ts_facade:
                 client_db_id = ts_facade.client_db_id_from_uid(unique_client_id)
@@ -161,14 +161,14 @@ class UserService:
         with self._database_connection.lock:
             tsDbIds = self._database_connection.cursor.execute("SELECT ts_db_id FROM users WHERE account_name = ?", (gw2account,)).fetchall()
             for tdi, in tsDbIds:
-                self.removePermissions(tdi)
+                self.remove_permissions(tdi)
                 LOG.debug("Removed permissions from %s", tdi)
             self._database_connection.cursor.execute("DELETE FROM users WHERE account_name = ?", (gw2account,))
             changes = self._database_connection.cursor.execute("SELECT changes()").fetchone()[0]
             self._database_connection.conn.commit()
             return changes
 
-    def getUserDBEntry(self, client_unique_id):
+    def get_user_database_entry(self, client_unique_id):
         """
         Retrieves the DB entry for a unique client ID.
         Is either a dictionary of database-field-names to values, or None if no such entry was found in the DB.
@@ -183,12 +183,12 @@ class UserService:
             assert len(entry) == len(keys)
             return dict([(keys[i][0], entry[i]) for i in range(len(entry))])
 
-    def TsClientLimitReached(self, gw_acct_name):
+    def is_ts_registration_limit_reached(self, gw_acct_name):
         with self._database_connection.lock:
             current_entries = self._database_connection.cursor.execute("SELECT * FROM users WHERE account_name=?", (gw_acct_name,)).fetchall()
             return len(current_entries) >= self._config.client_restriction_limit
 
-    def addUserToDB(self, client_unique_id, account_name, api_key, created_date, last_audit_date):
+    def add_user_to_database(self, client_unique_id, account_name, api_key, created_date, last_audit_date):
         with self._database_connection.lock:
             # client_id = self.getActiveTsUserID(client_unique_id)
             client_exists = self._database_connection.cursor.execute("SELECT * FROM users WHERE ts_db_id=?", (client_unique_id,)).fetchall()

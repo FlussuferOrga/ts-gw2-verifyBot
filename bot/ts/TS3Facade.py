@@ -34,7 +34,7 @@ class TS3Facade:
         try:
             resp = self._ts3_connection.ts3exec_raise(lambda tc: tc.wait_for_event(timeout=timeout))
         except TS3TimeoutError:
-            return None
+            resp = None
         return resp
 
     def send_text_message_to_client(self, target_client_id: int, msg: str):

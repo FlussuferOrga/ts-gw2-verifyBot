@@ -1,5 +1,4 @@
 #!/usr/bin/python
-import datetime  # for date strings
 import logging
 
 from bot.config import Config
@@ -32,8 +31,6 @@ class Bot:
         self.guild_service = GuildService(self._database_connection, self._ts_connection_pool, config)
         self.commander_service = CommanderService(self._ts_connection_pool, self.user_service, config)
         self.reset_roster_service = ResetRosterService(self._ts_connection_pool, config)
-
-        self.c_audit_date = datetime.date.today()
 
     def listen_for_events(self):
         active_loop = EventLooper(self._database_connection, self._ts_connection_pool, self._config, self.user_service, self.audit_service)

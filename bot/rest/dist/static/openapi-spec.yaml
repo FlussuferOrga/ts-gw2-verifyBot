@@ -6,8 +6,8 @@ info:
 paths:
   /health:
     get:
-      summary: simple health/liveness check
-      operationId: helathCheck
+      summary: Simple health/liveness check
+      operationId: healthCheck
       tags:
         - meta
       responses:

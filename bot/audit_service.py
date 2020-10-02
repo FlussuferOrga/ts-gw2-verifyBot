@@ -74,7 +74,7 @@ class AuditService:
                 self._database_connection.conn.commit()
         else:
             LOG.info("User %s is no longer on our server. Removing access....", account_name)
-            self._user_service.removePermissions(client_unique_id)
+            self._user_service.remove_permissions(client_unique_id)
             self._user_service.remove_user_from_db(client_unique_id)
 
     def trigger_user_audit(self):
@@ -82,7 +82,7 @@ class AuditService:
         threading.Thread(name="FullAudit", target=self._audit_users, daemon=True).start()
 
     def _audit_users(self):
-        self.c_audit_date = datetime.date.today()  # Update current date everytime run
+        current_audit_date = datetime.date.today()  # Update current date everytime run
 
         with self._database_connection.lock:
             db_audit_list = self._database_connection.cursor.execute('SELECT * FROM users').fetchall()
@@ -96,9 +96,9 @@ class AuditService:
             audit_last_audit_date = audit_user[4]
 
             LOG.debug("Audit: User %s", audit_account_name)
-            LOG.debug("TODAY |%s|  NEXT AUDIT |%s|", self.c_audit_date, audit_last_audit_date + datetime.timedelta(days=self._config.audit_period))
+            LOG.debug("TODAY |%s|  NEXT AUDIT |%s|", current_audit_date, audit_last_audit_date + datetime.timedelta(days=self._config.audit_period))
 
-            if self.c_audit_date >= audit_last_audit_date + datetime.timedelta(days=self._config.audit_period):  # compare audit date
+            if current_audit_date >= audit_last_audit_date + datetime.timedelta(days=self._config.audit_period):  # compare audit date
                 with self._ts_connection_pool.item() as ts_connection:
                     ts_uuid = ts_connection.client_db_id_from_uid(audit_ts_id)
                 if ts_uuid is None:
@@ -110,11 +110,11 @@ class AuditService:
                     self.queue_user_audit(QUEUE_PRIORITY_AUDIT, audit_account_name, audit_api_key, audit_ts_id)
 
         with self._database_connection.lock:
-            self._database_connection.cursor.execute('INSERT INTO bot_info (last_succesful_audit) VALUES (?)', (self.c_audit_date,))
+            self._database_connection.cursor.execute('INSERT INTO bot_info (last_succesful_audit) VALUES (?)', (current_audit_date,))
             self._database_connection.conn.commit()
 
     def audit_user_on_join(self, client_unique_id):
-        db_entry = self._user_service.getUserDBEntry(client_unique_id)
+        db_entry = self._user_service.get_user_database_entry(client_unique_id)
         if db_entry is not None:
             account_name = db_entry["account_name"]
             api_key = db_entry["api_key"]
