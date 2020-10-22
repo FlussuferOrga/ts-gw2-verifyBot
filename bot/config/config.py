@@ -15,10 +15,12 @@ class Config:
         configs.read(config_file_path, "utf-8")
 
         # Teamspeak Connection Settings
+        self.protocol = configs.get("teamspeak connection settings", "protocol", fallback="telnet")  # telnet or ssh
         self.host = configs.get("teamspeak connection settings", "host")
         self.port = configs.get("teamspeak connection settings", "port")
         self.user = configs.get("teamspeak connection settings", "user")
         self.passwd = configs.get("teamspeak connection settings", "passwd")
+        self.known_hosts_file = configs.get("teamspeak connection settings", "known_hosts_file", fallback=None)
 
         self.pool_size = self._try_get(configs, "teamspeak connection settings", "pool_size", 4)
         self.pool_ttl = self._try_get(configs, "teamspeak connection settings", "pool_ttl", 600)

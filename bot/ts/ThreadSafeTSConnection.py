@@ -39,9 +39,9 @@ class ThreadSafeTSConnection:
 
     @property
     def uri(self):
-        return "telnet://%s:%s@%s:%s" % (self._user, self._password, self._host, str(self._port))
+        return "%s://%s:%s@%s:%s" % (self._protocol, self._user, self._password, self._host, str(self._port))
 
-    def __init__(self, user, password, host, port, keepalive_interval=None, server_id=None, bot_nickname=None):
+    def __init__(self, protocol, user, password, host, port, keepalive_interval=None, server_id=None, bot_nickname=None, known_hosts_file: str = None):
         """
         Creates a new threadsafe TS3 connection.
         user: user to connect as
@@ -56,12 +56,15 @@ class ThreadSafeTSConnection:
         bot_nickname: nickname for the bot. Could be suffixed, see gentleRename. If None is passed,
                       no naming will take place.
         """
+        self._protocol = protocol
         self._user = user
         self._password = password
         self._host = host
         self._port = port
         self._keepalive_interval = int(keepalive_interval)
         self._server_id = server_id
+        self._known_hosts_file = known_hosts_file
+
         self._bot_nickname = bot_nickname + '-' + str(id(self))
         self.lock = RLock()
         self.ts_connection = None  # done in init()
@@ -74,7 +77,12 @@ class ThreadSafeTSConnection:
         with self.lock:  # lock for good measure
             if self.ts_connection is not None:
                 pass
-            self.ts_connection = ts3.query.TS3ServerConnection(self.uri)
+
+            tp_args = dict()
+            if self._protocol == "ssh" and self._known_hosts_file is not None:
+                tp_args["host_key"] = self._known_hosts_file
+
+            self.ts_connection = ts3.query.TS3ServerConnection(self.uri, tp_args=tp_args)
 
             # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
             self.ts_connection.COMMAND_SET = set(self.ts_connection.COMMAND_SET)  # creat copy of frozenset
@@ -230,8 +238,10 @@ class ThreadSafeTSConnection:
 
 
 def create_connection(config: Config, nickname: str) -> ThreadSafeTSConnection:
-    return ThreadSafeTSConnection(config.user, config.passwd,
+    return ThreadSafeTSConnection(config.protocol,
+                                  config.user, config.passwd,
                                   config.host, config.port,
                                   config.keepalive_interval,
                                   config.server_id,
-                                  nickname)
+                                  nickname,
+                                  known_hosts_file=config.known_hosts_file)

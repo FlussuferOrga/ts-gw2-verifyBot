@@ -29,7 +29,7 @@ def main(args: Namespace):  #
     ts_connection_pool: ConnectionPool[TS3Facade] = create_connection_pool(config)
 
     # auditjob trigger + keepalives using the "scheduler" lib
-    job_thread = RepeatTimer(10.0, schedule.run_pending)
+    job_thread = _create_job_thread()
     job_thread.start()
 
     # create bot instance and let it loop
@@ -45,6 +45,13 @@ def main(args: Namespace):  #
     database.close()
 
     LOG.info("Bye!")
+
+
+def _create_job_thread():
+    job_thread = RepeatTimer(10.0, schedule.run_pending)
+    job_thread.setDaemon(True)
+    job_thread.setName("schedule_run_pending")
+    return job_thread
 
 
 def _continuous_loop(config, database, ts_connection_pool):

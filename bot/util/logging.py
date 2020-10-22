@@ -42,3 +42,6 @@ def initialize_logging(file: Optional[str] = "./ts3bot.log", level: Union[str, i
         format=FORMAT,
         handlers=handlers
     )
+
+    # SSH Log is very verbose on DEBUG
+    logging.getLogger("paramiko.transport").setLevel(logging.INFO)
