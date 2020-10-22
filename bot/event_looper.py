@@ -5,7 +5,6 @@ import sqlite3
 import threading
 from typing import Optional
 
-import schedule
 import time
 from ts3.response import TS3Event
 
@@ -51,10 +50,7 @@ class EventLooper:
                 self._loop_for_events()
 
     def _loop_for_events(self):
-        while self._ts_facade.is_connected():
-            # auditjob trigger + keepalives
-            schedule.run_pending()
-
+        while self._ts_facade is not None and self._ts_facade.is_connected():
             response: TS3Event = self._ts_facade.wait_for_event(timeout=self._config.bot_sleep_idle)
             if response is not None:
                 event_type: str = response.event

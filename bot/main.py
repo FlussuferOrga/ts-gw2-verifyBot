@@ -14,6 +14,7 @@ from bot.connection_pool import ConnectionPool
 from bot.db import get_or_create_database
 from bot.rest import server
 from bot.ts import TS3Facade, create_connection
+from bot.util import RepeatTimer
 
 LOG = logging.getLogger(__name__)
 
@@ -27,10 +28,15 @@ def main(args: Namespace):  #
     database = get_or_create_database(config.db_file_name, config.current_version)
     ts_connection_pool: ConnectionPool[TS3Facade] = create_connection_pool(config)
 
+    # auditjob trigger + keepalives using the "scheduler" lib
+    job_thread = RepeatTimer(10.0, schedule.run_pending)
+    job_thread.start()
+
     # create bot instance and let it loop
     _continuous_loop(config, database, ts_connection_pool)
 
     # release resources gracefully
+    job_thread.cancel()
 
     LOG.info("Stopping Connection Pool...")
     ts_connection_pool.close()
