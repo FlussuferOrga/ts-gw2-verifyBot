@@ -8,14 +8,26 @@
 
 [teamspeak connection settings]
 
+# can be "telnet" or "ssh". Default is "telnet"
+protocol = telnet
+
 #can be IP or FQDN
 host = 127.0.0.1
 
-# Default port for ServerQuery access. Shouldn't need to change this.
+# 10011 = Default port for ServerQuery (telnet)
+# 10022 = Default port for ServerQuery (ssh)
 port = 10011
 
 user = serveradmin
 passwd = xxxxxxx
+
+# Only for SSH.
+# A standard known_hosts file.
+# Host keys can be initially queried via 'ssh-keyscan.exe -t ssh-rsa -p $port $host'
+# For some reason the above does not work on linux !?
+#
+# known_hosts_file  = ./known_hosts
+
 
 ## Pool Settings
 # Maximum connections in the pool. Should be >= 2

@@ -3,7 +3,7 @@ from bot.messages.locale import Locale
 
 class English(Locale):
     def __init__(self):
-        super(English, self).__init__()
+        super().__init__()
         self.set("bot_msg_example", "\n\nExample:\n\t\t7895D172-4991-9546-CB5B-78B015B0D8A72BC0E007-4FAF-48C3-9BF1-DA1OAD241266")
         self.set("bot_msg_note", "\n\nNOTE: Guild Wars 2 API keys can be created/deleted via ArenaNet site [URL]account.arena.net/applications[/URL].")
         self.set("bot_msg_verify", "Hello there! I believe you requested verification?\n\n"
@@ -13,9 +13,6 @@ class English(Locale):
 
         # Banner that we send to all users upon initialization
         self.set("bot_msg", "%s is alive once again! If you require verification, please reconnect!")
-
-        # Broadcast message
-        self.set("bot_msg_broadcast", "Hello there! You can begin verification by typing 'verifyme' in this channel.")
 
         # Message sent for sucesful verification
         self.set("bot_msg_success", "Authentication was succesful! Thank you fellow adventurer. Please give our rules a read and have fun \\(^.^)/ If you don't see any people, please relog once.")

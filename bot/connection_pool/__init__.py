@@ -34,14 +34,14 @@ class Unhealthy(Expired):
     """Connection was unhealthy"""
 
 
-T = TypeVar('T')
+_T = TypeVar('_T')
 
 
-class WrapperConnection(ContextManager[T]):
+class WrapperConnection(ContextManager[_T]):
     """Used to package database connections in the connection pool to handle life cycle logic"""
-    connection: T
+    connection: _T
 
-    def __init__(self, pool, connection: T):
+    def __init__(self, pool, connection: _T):
         self.pool = pool
         self.connection = connection
         self.usage = 0
@@ -57,14 +57,14 @@ class WrapperConnection(ContextManager[T]):
         """Reset connection package status"""
         self.usage = self.last = self.created = 0
 
-    def __enter__(self) -> T:
+    def __enter__(self) -> _T:
         return self.connection
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.pool.release(self)
 
 
-class ConnectionPool(Generic[T]):
+class ConnectionPool(Generic[_T]):
     """Connection pool class, can be used for pymysql/memcache/redis/... 等
 
     It can be called as follows：
@@ -81,9 +81,9 @@ class ConnectionPool(Generic[T]):
     __wrappers = {}
 
     def __init__(self,
-                 create: Callable[[], T],
-                 destroy_function: Callable[[T], None] = None,
-                 test_function: Callable[[T], bool] = None,
+                 create: Callable[[], _T],
+                 destroy_function: Callable[[_T], None] = None,
+                 test_function: Callable[[_T], bool] = None,
                  max_size: int = 10, max_usage: int = 0,
                  ttl: int = 0, idle: int = 60,
                  block: bool = True) -> None:
@@ -113,7 +113,7 @@ class ConnectionPool(Generic[T]):
         self._pool = queue.Queue()
         self._size = 0
 
-    def item(self) -> WrapperConnection[T]:
+    def item(self) -> WrapperConnection[_T]:
         """ can be called by with ... as ... syntax
 
              pool = ConnectionPool(create=redis.Redis)
@@ -165,7 +165,7 @@ class ConnectionPool(Generic[T]):
         self._unwrapper(wrapped)
         self._size -= 1
 
-    def _wrapper(self, conn: T) -> WrapperConnection[T]:
+    def _wrapper(self, conn: _T) -> WrapperConnection[_T]:
         if isinstance(conn, WrapperConnection):
             return conn
 
@@ -201,3 +201,16 @@ class ConnectionPool(Generic[T]):
 
         if self._test_function and not self._test_function(wrapped.connection):
             raise Unhealthy('Connection test determined that the connection is not healthy')
+
+    def close(self):
+        self._lock.acquire()
+
+        try:
+            q = self._pool
+            for items in range(0, self._size):
+                try:
+                    self._destroy(q.get(timeout=10))
+                except queue.Empty:
+                    pass
+        finally:
+            self._lock.release()

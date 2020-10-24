@@ -51,3 +51,6 @@ class ThreadSafeDBConnection:
         self.conn = sqlite3.connect(db_name, check_same_thread=False, detect_types=sqlite3.PARSE_DECLTYPES)
         self.cursor = self.conn.cursor()
         self.lock = RLock()
+
+    def close(self):
+        self.conn.close()

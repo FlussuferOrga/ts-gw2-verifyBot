@@ -15,10 +15,12 @@ class Config:
         configs.read(config_file_path, "utf-8")
 
         # Teamspeak Connection Settings
+        self.protocol = configs.get("teamspeak connection settings", "protocol", fallback="telnet")  # telnet or ssh
         self.host = configs.get("teamspeak connection settings", "host")
         self.port = configs.get("teamspeak connection settings", "port")
         self.user = configs.get("teamspeak connection settings", "user")
         self.passwd = configs.get("teamspeak connection settings", "passwd")
+        self.known_hosts_file = configs.get("teamspeak connection settings", "known_hosts_file", fallback=None)
 
         self.pool_size = self._try_get(configs, "teamspeak connection settings", "pool_size", 4)
         self.pool_ttl = self._try_get(configs, "teamspeak connection settings", "pool_ttl", 600)
@@ -42,7 +44,6 @@ class Config:
         self.audit_period = int(configs.get("bot settings", "audit_period"))  # How long a single user can go without being audited
         self.audit_interval = int(configs.get("bot settings", "audit_interval"))  # how often the BOT audits all users
         self.client_restriction_limit = int(configs.get("bot settings", "client_restriction_limit"))
-        self.timer_msg_broadcast = int(configs.get("bot settings", "broadcast_message_timer"))
 
         # tryGet(config, section, key, default = None, lit_eval = False):
         self.purge_completely = self._try_get(configs, "bot settings", "purge_completely", False, True)

@@ -1,35 +1,40 @@
 import logging
 
+from bot.config import Config
 from bot.ts.user import User
+from .connection_pool import ConnectionPool
+from .ts import TS3Facade
+from .user_service import UserService
 
 LOG = logging.getLogger(__name__)
 
 
-class CommanderChecker:
-    def __init__(self, ts3bot, commander_group_names):
-        self._commander_group_names = commander_group_names
-        self._ts3bot = ts3bot
+class CommanderService:
+    def __init__(self, ts_connection_pool: ConnectionPool[TS3Facade], user_service: UserService, config: Config):
+        self._commander_group_names = config.poll_group_names
+        self._ts_connection_pool = ts_connection_pool
+        self._user_service = user_service
 
-        with self._ts3bot.ts_connection_pool.item() as facade:
+        with self._ts_connection_pool.item() as facade:
             channel_list, ex = facade.channelgroup_list()
-            cgroups = list(filter(lambda g: g.get("name") in commander_group_names, channel_list))
+            cgroups = list(filter(lambda g: g.get("name") in self._commander_group_names, channel_list))
         if len(cgroups) < 1:
-            LOG.info("Could not find any group of %s to determine commanders by. Disabling this feature.", str(commander_group_names))
+            LOG.info("Could not find any group of %s to determine commanders by. Disabling this feature.", str(self._commander_group_names))
             self._commander_groups = []
             return
 
         self._commander_groups = [c.get("cgid") for c in cgroups]
 
-    def execute(self):
+    def get_active_commanders(self):
         if not self._commander_groups:
             return  # disabled if no groups were found
 
         active_commanders = []
 
-        with self._ts3bot.ts_connection_pool.item() as ts_facade:
+        with self._ts_connection_pool.item() as ts_facade:
             acs = ts_facade.channelgroup_client_list(self._commander_groups)
             LOG.info(acs)
-            active_commanders_entries = [(c, self._ts3bot.getUserDBEntry(ts_facade.client_get_name_from_dbid(client_dbid=c.get("cldbid")).get("cluid"))) for c in acs]
+            active_commanders_entries = [(c, self._user_service.get_user_database_entry(ts_facade.client_get_name_from_dbid(client_dbid=c.get("cldbid")).get("cluid"))) for c in acs]
             for ts_entry, db_entry in active_commanders_entries:
                 if db_entry is not None:  # or else the user with the commander group was not registered and therefore not in the DB
                     user = User(ts_facade, ts_db_id=ts_entry.get("cldbid"))

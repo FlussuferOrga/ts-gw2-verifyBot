@@ -32,7 +32,7 @@ class Locale:
 
 class MultiLocale(Locale):
     def __init__(self, locales, glue="\n\n-------------------------------------\n\n"):
-        super(MultiLocale, self).__init__()
+        super().__init__()
         self._locales = locales
         self._glue = glue
 

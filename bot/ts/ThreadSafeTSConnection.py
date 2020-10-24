@@ -19,6 +19,11 @@ def default_exception_handler(ex):
     return ex
 
 
+def raise_exception_handler(ex):
+    """ raises the exception for further inspection """
+    raise ex
+
+
 def signal_exception_handler(ex):
     """ returns the exception without printing it, useful for expected exceptions, signaling that an exception occurred """
     return ex
@@ -34,9 +39,9 @@ class ThreadSafeTSConnection:
 
     @property
     def uri(self):
-        return "telnet://%s:%s@%s:%s" % (self._user, self._password, self._host, str(self._port))
+        return "%s://%s:%s@%s:%s" % (self._protocol, self._user, self._password, self._host, str(self._port))
 
-    def __init__(self, user, password, host, port, keepalive_interval=None, server_id=None, bot_nickname=None):
+    def __init__(self, protocol, user, password, host, port, keepalive_interval=None, server_id=None, bot_nickname=None, known_hosts_file: str = None):
         """
         Creates a new threadsafe TS3 connection.
         user: user to connect as
@@ -51,40 +56,46 @@ class ThreadSafeTSConnection:
         bot_nickname: nickname for the bot. Could be suffixed, see gentleRename. If None is passed,
                       no naming will take place.
         """
+        self._protocol = protocol
         self._user = user
         self._password = password
         self._host = host
         self._port = port
         self._keepalive_interval = int(keepalive_interval)
         self._server_id = server_id
+        self._known_hosts_file = known_hosts_file
+
         self._bot_nickname = bot_nickname + '-' + str(id(self))
         self.lock = RLock()
         self.ts_connection = None  # done in init()
         self._keepalive_job = None
-        self.init()
+        self._init()
 
         LOG.info("New Connection {self} is ready.")
 
-    def init(self):
-        if self.ts_connection is not None:
-            try:
-                self.ts_connection.close()
-            except Exception:
-                pass  # may already be closed, doesn't matter.
-        self.ts_connection = ts3.query.TS3ServerConnection(self.uri)
+    def _init(self):
+        with self.lock:  # lock for good measure
+            if self.ts_connection is not None:
+                pass
 
-        # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
-        self.ts_connection.COMMAND_SET = set(self.ts_connection.COMMAND_SET)  # creat copy of frozenset
-        self.ts_connection.COMMAND_SET.add('quit')  # add command
+            tp_args = dict()
+            if self._protocol == "ssh" and self._known_hosts_file is not None:
+                tp_args["host_key"] = self._known_hosts_file
 
-        if self._keepalive_interval is not None:
-            if self._keepalive_job is not None:
-                schedule.cancel_job(self._keepalive_job)  # to avoid accumulating keepalive calls during re-inits
-            self._keepalive_job = schedule.every(self._keepalive_interval).seconds.do(self.keepalive)
-        if self._server_id is not None:
-            self.ts3exec(lambda tc: tc.exec_("use", sid=self._server_id))
-        if self._bot_nickname is not None:
-            self.forceRename(self._bot_nickname)
+            self.ts_connection = ts3.query.TS3ServerConnection(self.uri, tp_args=tp_args)
+
+            # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
+            self.ts_connection.COMMAND_SET = set(self.ts_connection.COMMAND_SET)  # creat copy of frozenset
+            self.ts_connection.COMMAND_SET.add('quit')  # add command
+
+            if self._keepalive_interval is not None:
+                self._keepalive_job = schedule.every(self._keepalive_interval).seconds.do(self.keepalive)
+
+            if self._server_id is not None:
+                self.ts3exec(lambda tc: tc.exec_("use", sid=self._server_id))
+
+            if self._bot_nickname is not None:
+                self.force_rename(self._bot_nickname)
 
     def __str__(self):
         return f"ThreadSafeTSConnection[{self._bot_nickname}]"
@@ -98,7 +109,11 @@ class ThreadSafeTSConnection:
 
     def keepalive(self):
         LOG.info(f"Keepalive {self}")
-        self.ts3exec(lambda tc: tc.send_keepalive())
+        with self.lock:
+            self.ts3exec(lambda tc: tc.send_keepalive())
+
+    def ts3exec_raise(self, handler: Callable[[TS3ServerConnection], R]) -> R:
+        return self.ts3exec(handler, raise_exception_handler)[0]
 
     def ts3exec(self,
                 handler: Callable[[TS3ServerConnection], R],
@@ -128,7 +143,6 @@ class ThreadSafeTSConnection:
 
         returns a tuple with the results of the two handlers (result first, exception result second).
         """
-        reinit = False
         with self.lock:
             failed = True
             fails = 0
@@ -138,29 +152,40 @@ class ThreadSafeTSConnection:
                 failed = False
                 try:
                     res = handler(self.ts_connection)
-                except ts3.query.TS3TransportError:
+                except ts3.query.TS3TransportError as ts3tex:
                     failed = True
                     fails += 1
-                    LOG.error("Critical error on transport level! Attempt %s to restart the connection and send the command again.", str(fails), )
-                    reinit = True
+                    if fails >= ThreadSafeTSConnection.RETRIES:
+                        LOG.error("Critical error on transport level! Closing this Connection.", exc_info=ts3tex)
+                        self.close()
+                        raise ts3tex
+                    else:
+                        LOG.error("Error on transport level! Attempt %s to send the command again.", str(fails), )
                 except Exception as ex:
                     exres = exception_handler(ex)
-        if reinit:
-            self.init()
         return res, exres
 
     def close(self):
-        LOG.info("Closing Connection: %s", self)
-        if self._keepalive_job is not None:
-            schedule.cancel_job(self._keepalive_job)
+        with self.lock:
+            LOG.info("Closing %s", self)
+            if self._keepalive_job is not None:
+                schedule.cancel_job(self._keepalive_job)
 
-        # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
-        if self.ts_connection is not None:
-            self.ts_connection.exec_("quit")  # send quit
-            self.ts_connection.close()  # immediately quit
-            del self.ts_connection
+            # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
+            if self.ts_connection is not None \
+                    and hasattr(self.ts_connection, "is_connected") \
+                    and self.ts_connection.is_connected():
+                try:
+                    self.ts_connection.exec_("quit")  # send quit
+                    self.ts_connection.close()  # immediately quit
+                except ts3.query.TS3TransportError:
+                    pass
+                except Exception as ex:
+                    LOG.debug("Exception during closing the connection. This is usually not a problem.", exc_info=ex)
+                finally:
+                    self.ts_connection = None
 
-    def gentleRename(self, nickname):
+    def _gentle_rename(self, nickname):
         """
         Renames self to nickname, but attaches a running counter
         to the name if the nickname is already taken.
@@ -175,7 +200,7 @@ class ThreadSafeTSConnection:
         self._bot_nickname = new_nick
         return self._bot_nickname
 
-    def forceRename(self, target_nickname):
+    def force_rename(self, target_nickname):
         """
         Attempts to forcefully rename self.
         If the chosen nickname is already taken, the bot will attempt to kick that user.
@@ -202,7 +227,7 @@ class ThreadSafeTSConnection:
                             target_nickname)
                     else:
                         LOG.info("Kicked user who was using the reserved registration bot name '%s'.", target_nickname)
-                    target_nickname = self.gentleRename(target_nickname)
+                    target_nickname = self._gentle_rename(target_nickname)
                     LOG.info("Renamed self to '%s'.", target_nickname)
                 else:
                     self.ts3exec(lambda tc: tc.exec_("clientupdate", client_nickname=target_nickname))
@@ -213,8 +238,10 @@ class ThreadSafeTSConnection:
 
 
 def create_connection(config: Config, nickname: str) -> ThreadSafeTSConnection:
-    return ThreadSafeTSConnection(config.user, config.passwd,
+    return ThreadSafeTSConnection(config.protocol,
+                                  config.user, config.passwd,
                                   config.host, config.port,
                                   config.keepalive_interval,
                                   config.server_id,
-                                  nickname)
+                                  nickname,
+                                  known_hosts_file=config.known_hosts_file)

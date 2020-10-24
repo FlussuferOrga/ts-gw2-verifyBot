@@ -11,19 +11,8 @@ h_char = '[CharacterGet]'  # Character loading
 h_auth = '[AuthCheck]'
 h_char_chk = '[CharacterCheck]'
 
+
 #############################
-# Functions
-
-"""
-def log(msg,silent=False):
-    if not silent:
-        print (msg)
-        sys.stdout.flush()
-    with open(log_file,"a") as logger:
-        new_log = "%s %s\n" %(str(datetime.now()),msg)
-        logger.write(new_log)
-"""
-
 
 # Class for an authentication request from user
 
@@ -39,9 +28,13 @@ class AuthRequest:
         self.account_details = {}
         self.world = None
         self.users_server = None
+        self.name = None
         self.id = -1
         self.guilds_error = False
         self.guilds = []
+
+        self.guild_tags = []
+        self.guild_names = []
 
         self.pushCharacterAuth()
         self.pushAccountAuth()
@@ -88,8 +81,7 @@ class AuthRequest:
         self.guilds_error = False
 
         # Players Guild Tags (Seems to order it by oldest guild first)
-        self.guild_tags = []
-        self.guild_names = []
+
         for guild_id in self.guilds:
             try:
                 ginfo = gw2api.guild_get(guild_id)

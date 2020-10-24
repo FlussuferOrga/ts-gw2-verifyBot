@@ -1,13 +1,19 @@
 import logging
 
+import binascii
+
 import bot.gwapi as gw2api
 from bot.config import Config
 from bot.connection_pool import ConnectionPool
 from bot.db import ThreadSafeDBConnection
-from bot.emblem_downloader import download_guild_emblem
 from bot.ts import TS3Facade, User
+from .emblem_downloader import download_guild_emblem
 
 LOG = logging.getLogger(__name__)
+
+
+def _generate_guild_icon_id(name) -> int:
+    return binascii.crc32(name.encode('utf8'))
 
 
 class GuildService:
@@ -100,8 +106,9 @@ class GuildService:
                 LOG.debug("Checks complete.")
 
                 # Icon uploading
-                icon_id, icon_content = download_guild_emblem(guild_id, guild_name)  # Returns None if no icon
-                if icon_id is not None and icon_content is not None:
+                icon_content = download_guild_emblem(guild_id)  # Returns None if no icon
+                if icon_content is not None:
+                    icon_id = _generate_guild_icon_id(guild_name)
                     LOG.info("Uploading icon as '%s'", icon_id)
                     ts_facade.upload_icon(icon_id, icon_content)
 
@@ -109,7 +116,7 @@ class GuildService:
                 # CREATE CHANNEL AND SUBCHANNELS #
                 ##################################
                 LOG.debug("Creating guild channel ...")
-                channel_list, _ = ts_facade.channel_list()
+                channel_list = ts_facade.channel_list()
 
                 # assert channel and group both exist and parent channel is available
                 all_guild_channels = [c for c in channel_list if c.get("pid") == parent.channel_id]
@@ -182,8 +189,7 @@ class GuildService:
             # ADD CONTACTS #
             ################
             LOG.debug("Adding contacts...")
-            cgroups, _ = ts_facade.channelgroup_list()
-            contactgroup = next((cg for cg in cgroups if cg.get("name") == self._config.guild_contact_channel_group), None)
+            contactgroup = self._find_contact_group(ts_facade)
             if contactgroup is None:
                 LOG.debug("Can not find a group for guild contacts. Skipping.")
             else:
@@ -193,19 +199,24 @@ class GuildService:
                         for acc in accs:
                             try:
                                 user = User(ts_facade, unique_id=acc)
-                                user = User(ts_facade, unique_id=acc)
                                 ex = ts_facade.set_client_channelgroup(channel_id=cinfo.get("cid"), channelgroup_id=contactgroup.get("cgid"), client_db_id=user.ts_db_id)
                                 # while we are at it, add the contacts to the guild group as well
                                 ts_facade.servergroup_client_add(servergroup_id=guild_servergroup_id, client_db_id=user.ts_db_id)
 
                                 errored = ex is not None
-                            except Exception:
-                                errored = True
+                            except Exception as ex:
+                                errored = ex
                             if errored:
                                 LOG.error("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in "
                                           "guild channel for %s. Maybe the uid is not valid anymore.",
-                                          self._config.guild_contact_channel_group, c, acc, guild_name)
+                                          self._config.guild_contact_channel_group, c, acc, guild_name, exc_info=ex)
             return SUCCESS
+
+    def _find_contact_group(self, ts_facade):
+        cgroups, _ = ts_facade.channelgroup_list()
+        # check type == 1 to filter out template groups
+        contactgroup = next((cg for cg in cgroups if cg.get("name") == self._config.guild_contact_channel_group and cg.get("type") == "1"), None)
+        return contactgroup
 
     def _create_guild_servergroup_permissions(self, icon_id):
         perms = [
@@ -223,8 +234,8 @@ class GuildService:
     def _sort_guild_groups_using_talk_power(self, groups, ts_facade):
         with self._database.lock:
             guildgroups = [g[0] for g in self._database.cursor.execute("SELECT ts_group FROM guilds ORDER BY ts_group").fetchall()]
-        for i in range(len(guildgroups)):
-            g = next((g for g in groups if g.get("name") == guildgroups[i]), None)
+        for i, guild_group in enumerate(guildgroups):
+            g = next((g for g in groups if g.get("name") == guild_group), None)
             if g is None:
                 # error! Group deleted from TS, but not from DB!
                 LOG.warning("Found guild '%s' in the database, but no coresponding server group! Skipping this entry, but it should be fixed!", guildgroups[i])
@@ -236,6 +247,10 @@ class GuildService:
 
                 # sort guild groups to have users grouped by their guild tag alphabetically in channels
                 _, _ = ts_facade.servergroup_add_permission(g.get("sgid"), "i_client_talk_power", tp)
+
+                # sort guild groups in group list
+                sort_id = self._config.guilds_sort_id + i
+                _, _ = ts_facade.servergroup_add_permission(g.get("sgid"), "i_group_sort_id", sort_id)
 
     @staticmethod
     def _build_channel_name(guild_info) -> str:
@@ -315,5 +330,9 @@ class GuildService:
             else:
                 LOG.debug("Deleting group '%s'.", groupname)
                 ts3_facade.servergroup_delete(group.get("sgid"), force=True)
+
+            guild_icon_id = _generate_guild_icon_id(guild_name)
+
+            ts3_facade.remove_icon_if_exists(guild_icon_id)
 
             return SUCCESS
