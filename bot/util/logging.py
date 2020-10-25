@@ -30,7 +30,7 @@ def initialize_logging(file: Optional[str] = "./ts3bot.log", level: Union[str, i
 
     handlers = [logging.StreamHandler(sys.stdout)]
     if file is not None:
-        handlers.append(logging.FileHandler(file, delay=True))
+        handlers.append(logging.FileHandler(file, delay=True, encoding='utf-8'))
 
     for handler in handlers:
         handler.setLevel(level)
