@@ -2,12 +2,18 @@
 Idea & Base from https://pypi.org/project/connection-pool/ https://github.com/zhouyl/ConnectionPool
 Modification by https://github.com/Xyaren
 """
-
+import logging
 import queue
 import threading
 from typing import Callable, ContextManager, Generic, TypeVar
 
 import time
+
+LOG = logging.getLogger(__name__)
+
+
+class ConnectionInitializationException(Exception):
+    """When there are too many connections, throw this exception"""
 
 
 class TooManyConnections(Exception):
@@ -62,6 +68,9 @@ class WrapperConnection(ContextManager[_T]):
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.pool.release(self)
+
+    def __str__(self):
+        return f"WrapperConnection[{self.connection}]"
 
 
 class ConnectionPool(Generic[_T]):
@@ -123,7 +132,7 @@ class ConnectionPool(Generic[_T]):
         self._lock.acquire()
 
         try:
-            while (self._max_size and self._pool.empty() and self._size >= self._max_size):
+            while self._max_size and self._pool.empty() and self._size >= self._max_size:
                 if not self._block:
                     raise TooManyConnections('Too many connections')
 
@@ -131,9 +140,26 @@ class ConnectionPool(Generic[_T]):
 
             try:
                 wrapped = self._pool.get_nowait()  # Get one from the free connection pool
-            except queue.Empty:
-                wrapped = self._wrapper(self._create())  # Create new connection
-                self._size += 1
+
+                # test connection before handing it out
+                try:
+                    self._test(wrapped)
+                except Expired as ex:  # connection was not healthy
+                    LOG.info("Connection %s was expired on checkout", wrapped, exc_info=ex)
+                    self._destroy(wrapped, f"Expired on checkout: {ex}")
+                    return self.item()  # recursion: now that the bad connection is removed from the pool start over.
+            except queue.Empty:  # no connection in pool
+                wrapped = None
+
+            if wrapped is None:
+                try:
+                    wrapped = self._wrapper(self._create())  # Create new connection
+                    LOG.debug("Connection %s created", wrapped)
+                    self._size += 1
+                except Exception as ex:
+                    raise ConnectionInitializationException("A new connection for the pool could not be created.") from ex
+            else:
+                LOG.info("Connection %s will be checked out from the pool", wrapped)
         finally:
             self._lock.release()
 
@@ -149,16 +175,19 @@ class ConnectionPool(Generic[_T]):
 
         try:
             self._test(wrapped)
-        except Expired:
-            self._destroy(wrapped)
+        except Expired as ex:
+            self._destroy(wrapped, f"Expired on release: {ex}")
         else:
+            LOG.debug("Connection %s will be released into the pool", wrapped)
             self._pool.put_nowait(wrapped)
             self._lock.notifyAll()  # Notify other threads that there are idle connections available
         finally:
             self._lock.release()
 
-    def _destroy(self, wrapped):
+    def _destroy(self, wrapped, reason):
         """Destroy a connection"""
+        LOG.debug("Connection %s will be destroyed. Reason: %s", wrapped, reason)
+
         if self._destroy_function is not None:
             self._destroy_function(wrapped.connection)
 
@@ -199,17 +228,21 @@ class ConnectionPool(Generic[_T]):
         if self._idle and (wrapped.last + self._idle) < time.time():
             raise IdleExceeded('Idle exceeds %d secs' % self._idle)
 
-        if self._test_function and not self._test_function(wrapped.connection):
-            raise Unhealthy('Connection test determined that the connection is not healthy')
+        if self._test_function:
+            try:
+                is_healthy = self._test_function(wrapped.connection)
+            except Exception as ex:
+                raise Unhealthy('Connection test determined that the connection is not healthy by exception') from ex
+            if not is_healthy:
+                raise Unhealthy('Connection test determined that the connection is not healthy')
 
     def close(self):
         self._lock.acquire()
-
         try:
             q = self._pool
             for items in range(0, self._size):
                 try:
-                    self._destroy(q.get(timeout=10))
+                    self._destroy(q.get(timeout=10), "Pool closing")
                 except queue.Empty:
                     pass
         finally:

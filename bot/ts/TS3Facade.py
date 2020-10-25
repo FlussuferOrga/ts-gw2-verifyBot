@@ -25,7 +25,10 @@ class TS3Facade:
         return f"TS3Facade[{self._ts3_connection}]"
 
     def is_connected(self):
-        return self._ts3_connection.ts3exec_raise(lambda tc: tc.is_connected())  # and self.version() is not None
+        return self._ts3_connection.is_connected()
+
+    def is_healthy(self):
+        return self._ts3_connection.is_healthy()
 
     def version(self):
         return self._ts3_connection.ts3exec_raise(lambda tc: tc.query("version").first())

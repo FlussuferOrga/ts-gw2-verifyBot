@@ -50,16 +50,16 @@ class EventLooper:
                 self._loop_for_events()
 
     def _loop_for_events(self):
-        while self._ts_facade is not None and self._ts_facade.is_connected():
+        while self._ts_facade is not None and self._ts_facade.is_healthy():
             response: TS3Event = self._ts_facade.wait_for_event(timeout=self._config.bot_sleep_idle)
             if response is not None:
                 event_type: str = response.event
                 event_data = response.parsed[0]
-
                 try:
                     self._handle_event(event_data, event_type)
                 except Exception as ex:
                     LOG.error("Error while handling the event", exc_info=ex)
+        LOG.info("Listening Connection is not available anymore. Ending loop.")
 
     def _set_up_connection(self):
         LOG.info("Setting up representative Connection: %s ...", self._ts_facade)
