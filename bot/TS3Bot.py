@@ -19,9 +19,7 @@ class Bot:
 
     def __init__(self, database: ThreadSafeDBConnection,
                  ts_connection_pool: ConnectionPool[TS3Facade],
-                 ts_facade: TS3Facade,
                  config: Config):
-        self._ts_facade = ts_facade  # use this only for representative Tasks such as sending messages to a user. Use a connection from the pool for worker tasks
         self._ts_connection_pool = ts_connection_pool  # worker connection pool
         self._config = config
         self._database_connection = database

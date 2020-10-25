@@ -2,12 +2,18 @@
 Idea & Base from https://pypi.org/project/connection-pool/ https://github.com/zhouyl/ConnectionPool
 Modification by https://github.com/Xyaren
 """
-
+import logging
 import queue
 import threading
 from typing import Callable, ContextManager, Generic, TypeVar
 
 import time
+
+LOG = logging.getLogger(__name__)
+
+
+class ConnectionInitializationException(Exception):
+    """When it was not possible to instantiate a new connection, throw this exception"""
 
 
 class TooManyConnections(Exception):
@@ -34,7 +40,7 @@ class Unhealthy(Expired):
     """Connection was unhealthy"""
 
 
-_T = TypeVar('_T')
+_T = TypeVar("_T")
 
 
 class WrapperConnection(ContextManager[_T]):
@@ -63,6 +69,9 @@ class WrapperConnection(ContextManager[_T]):
     def __exit__(self, exc_type, exc_value, traceback):
         self.pool.release(self)
 
+    def __str__(self):
+        return f"WrapperConnection[{self.connection}]"
+
 
 class ConnectionPool(Generic[_T]):
     """Connection pool class, can be used for pymysql/memcache/redis/... 等
@@ -71,11 +80,11 @@ class ConnectionPool(Generic[_T]):
         pool = ConnectionPool(create=redis.Redis)
 
     You can also specify the create call by lambda：
-        pool = ConnectionPool(create=lambda: redis.Redis(host='127.0.0.1'))
+        pool = ConnectionPool(create=lambda: redis.Redis(host="127.0.0.1"))
 
     Or through functools.partial
         from functools import partial
-        pool = ConnectionPool(create=partial(redis.Redis, host='127.0.0.1'))
+        pool = ConnectionPool(create=partial(redis.Redis, host="127.0.0.1"))
     """
 
     __wrappers = {}
@@ -98,7 +107,7 @@ class ConnectionPool(Generic[_T]):
             idle: connection idle time, unit (seconds), when the connection is idle for a specified time, it will be released/closed
             block: When the number of connections is full, whether to block waiting for the connection to be released, input False to throw an exception when the connection pool is full
         """
-        if not hasattr(create, '__call__'):
+        if not hasattr(create, "__call__"):
             raise ValueError('"create" argument is not callable')
 
         self._create = create
@@ -118,22 +127,39 @@ class ConnectionPool(Generic[_T]):
 
              pool = ConnectionPool(create=redis.Redis)
              with pool.item() as redis:
-                 redis.set('foo','bar)
+                 redis.set("foo","bar)
          """
         self._lock.acquire()
 
         try:
-            while (self._max_size and self._pool.empty() and self._size >= self._max_size):
+            while self._max_size and self._pool.empty() and self._size >= self._max_size:
                 if not self._block:
-                    raise TooManyConnections('Too many connections')
+                    raise TooManyConnections("Too many connections")
 
                 self._lock.wait()  # Wait for idle connection
 
             try:
                 wrapped = self._pool.get_nowait()  # Get one from the free connection pool
-            except queue.Empty:
-                wrapped = self._wrapper(self._create())  # Create new connection
-                self._size += 1
+
+                # test connection before handing it out
+                try:
+                    self._test(wrapped)
+                except Expired as ex:  # connection was not healthy
+                    LOG.info("Connection %s was expired on checkout", wrapped, exc_info=ex)
+                    self._destroy(wrapped, f"Expired on checkout: {ex}")
+                    return self.item()  # recursion: now that the bad connection is removed from the pool start over.
+            except queue.Empty:  # no connection in pool
+                wrapped = None
+
+            if wrapped is None:
+                try:
+                    wrapped = self._wrapper(self._create())  # Create new connection
+                    LOG.debug("Connection %s created", wrapped)
+                    self._size += 1
+                except Exception as ex:
+                    raise ConnectionInitializationException("A new connection for the pool could not be created.") from ex
+            else:
+                LOG.info("Connection %s will be checked out from the pool", wrapped)
         finally:
             self._lock.release()
 
@@ -149,16 +175,19 @@ class ConnectionPool(Generic[_T]):
 
         try:
             self._test(wrapped)
-        except Expired:
-            self._destroy(wrapped)
+        except Expired as ex:
+            self._destroy(wrapped, f"Expired on release: {ex}")
         else:
+            LOG.debug("Connection %s will be released into the pool", wrapped)
             self._pool.put_nowait(wrapped)
             self._lock.notifyAll()  # Notify other threads that there are idle connections available
         finally:
             self._lock.release()
 
-    def _destroy(self, wrapped):
+    def _destroy(self, wrapped, reason):
         """Destroy a connection"""
+        LOG.debug("Connection %s will be destroyed. Reason: %s", wrapped, reason)
+
         if self._destroy_function is not None:
             self._destroy_function(wrapped.connection)
 
@@ -191,25 +220,29 @@ class ConnectionPool(Generic[_T]):
     def _test(self, wrapped):
         """Test the availability of the connection, and throw an Expired exception when it is not available"""
         if self._max_usage and wrapped.usage >= self._max_usage:
-            raise UsageExceeded('Usage exceeds %d times' % self._max_usage)
+            raise UsageExceeded("Usage exceeds %d times" % self._max_usage)
 
         if self._ttl and (wrapped.created + self._ttl) < time.time():
-            raise TtlExceeded('TTL exceeds %d secs' % self._ttl)
+            raise TtlExceeded("TTL exceeds %d secs" % self._ttl)
 
         if self._idle and (wrapped.last + self._idle) < time.time():
-            raise IdleExceeded('Idle exceeds %d secs' % self._idle)
+            raise IdleExceeded("Idle exceeds %d secs" % self._idle)
 
-        if self._test_function and not self._test_function(wrapped.connection):
-            raise Unhealthy('Connection test determined that the connection is not healthy')
+        if self._test_function:
+            try:
+                is_healthy = self._test_function(wrapped.connection)
+            except Exception as ex:
+                raise Unhealthy("Connection test determined that the connection is not healthy by exception") from ex
+            if not is_healthy:
+                raise Unhealthy("Connection test determined that the connection is not healthy")
 
     def close(self):
         self._lock.acquire()
-
         try:
             q = self._pool
-            for items in range(0, self._size):
+            for _ in range(0, self._size):
                 try:
-                    self._destroy(q.get(timeout=10))
+                    self._destroy(q.get(timeout=10), "Pool closing")
                 except queue.Empty:
                     pass
         finally:

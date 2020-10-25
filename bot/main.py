@@ -10,7 +10,7 @@ import ts3
 
 from bot import Bot
 from bot.config import Config
-from bot.connection_pool import ConnectionPool
+from bot.connection_pool import ConnectionInitializationException, ConnectionPool
 from bot.db import get_or_create_database
 from bot.rest import server
 from bot.ts import TS3Facade, create_connection
@@ -62,42 +62,43 @@ def _continuous_loop(config, database, ts_connection_pool):
     while bot_loop_forever:
         try:
             LOG.info("Connecting to Teamspeak server...")
+            bot_instance = Bot(database, ts_connection_pool, config)
 
-            with ts_connection_pool.item() as ts_facade:
-                bot_instance = Bot(database, ts_connection_pool, ts_facade, config)
+            http_server = server.create_http_server(bot_instance, port=config.ipc_port)
+            try:
+                http_server.start()
 
-                http_server = server.create_http_server(bot_instance, port=config.ipc_port)
-                try:
-                    http_server.start()
+                LOG.info("BOT Database Audit policies initiating.")
+                # Always audit users on initialize if user audit date is up (in case the script is reloaded several
+                # times before audit interval hits, so we can ensure we maintain user database accurately)
+                bot_instance.trigger_user_audit()
 
-                    LOG.info("BOT Database Audit policies initiating.")
-                    # Always audit users on initialize if user audit date is up (in case the script is reloaded several
-                    # times before audit interval hits, so we can ensure we maintain user database accurately)
-                    bot_instance.trigger_user_audit()
+                #                     # Set audit schedule job to run in X days
+                audit_job = schedule.every(config.audit_interval).days.do(bot_instance.trigger_user_audit)
 
-                    #                     # Set audit schedule job to run in X days
-                    audit_job = schedule.every(config.audit_interval).days.do(bot_instance.trigger_user_audit)
+                bot_instance.listen_for_events()
+            finally:
+                if audit_job is not None:
+                    schedule.cancel_job(audit_job)
 
-                    bot_instance.listen_for_events()
-                finally:
-                    if audit_job is not None:
-                        schedule.cancel_job(audit_job)
-
-                    if http_server is not None:
-                        LOG.info("Stopping Http Server")
-                        http_server.stop()
-        except (ConnectionRefusedError, ts3.query.TS3TransportError) as ex:
-            LOG.warning("Unable to reach teamspeak server..trying again in %s seconds...", config.bot_sleep_conn_lost, exc_info=ex)
-            time.sleep(config.bot_sleep_conn_lost)
+                if http_server is not None:
+                    LOG.info("Stopping Http Server")
+                    http_server.stop()
         except (KeyboardInterrupt, SystemExit):
             LOG.info("Shutdown signal received. Shutting down:")
             bot_loop_forever = False  # stop loop
+        except (ts3.query.TS3TransportError, ConnectionInitializationException, ConnectionRefusedError, OSError) as ex:
+            LOG.warning("A Connection Problem with the Teamspeak Server occurred. Trying again in %s seconds...", config.bot_sleep_conn_lost, exc_info=ex)
+            time.sleep(config.bot_sleep_conn_lost)
+        except Exception as ex:
+            LOG.warning("Unexpected Exception occurred. Trying again in %s seconds...", config.bot_sleep_conn_lost, exc_info=ex)
+            time.sleep(config.bot_sleep_conn_lost)
 
 
 def create_connection_pool(config):
     return ConnectionPool(create=lambda: TS3Facade(create_connection(config, config.bot_nickname)),
                           destroy_function=lambda obj: obj.close(),
-                          test_function=lambda obj: obj.is_connected(),
+                          test_function=lambda obj: obj.is_healthy(),
                           max_size=config.pool_size,
                           max_usage=config.pool_max_usage, idle=config.pool_tti, ttl=config.pool_ttl)
 
