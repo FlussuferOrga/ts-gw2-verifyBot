@@ -13,7 +13,7 @@ LOG = logging.getLogger(__name__)
 
 
 class ConnectionInitializationException(Exception):
-    """When there are too many connections, throw this exception"""
+    """When it was not possible to instantiate a new connection, throw this exception"""
 
 
 class TooManyConnections(Exception):
