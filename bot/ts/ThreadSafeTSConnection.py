@@ -71,7 +71,7 @@ class ThreadSafeTSConnection:
         self._keepalive_job = None
         self._init()
 
-        LOG.info(f"New Connection %s is ready.", self)
+        LOG.info("New Connection %s is ready.", self)
 
     def _init(self):
         with self.lock:  # lock for good measure
