@@ -240,7 +240,7 @@ class ConnectionPool(Generic[_T]):
         self._lock.acquire()
         try:
             q = self._pool
-            for items in range(0, self._size):
+            for _ in range(0, self._size):
                 try:
                     self._destroy(q.get(timeout=10), "Pool closing")
                 except queue.Empty:

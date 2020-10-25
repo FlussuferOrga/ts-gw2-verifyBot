@@ -108,7 +108,7 @@ class ThreadSafeTSConnection:
         return None
 
     def keepalive(self):
-        LOG.info(f"Keepalive {self}")
+        LOG.info("Keepalive %s", self)
         with self.lock:
             try:
                 self.ts3exec_raise(lambda tc: tc.send_keepalive())
@@ -134,7 +134,7 @@ class ThreadSafeTSConnection:
 
     def ts3exec(self,
                 handler: Callable[[TS3ServerConnection], R],
-                exception_handler=lambda ex: default_exception_handler(ex)) -> Tuple[R, Exception]:  # eh = lambda ex: print(ex)):
+                exception_handler=default_exception_handler) -> Tuple[R, Exception]:  # eh = lambda ex: print(ex)):
         """
         Excecutes a query() or exec_() on the internal TS3 connection.
         handler: a function ts3.query.TS3ServerConnection -> any
