@@ -40,7 +40,7 @@ class Unhealthy(Expired):
     """Connection was unhealthy"""
 
 
-_T = TypeVar('_T')
+_T = TypeVar("_T")
 
 
 class WrapperConnection(ContextManager[_T]):
@@ -80,11 +80,11 @@ class ConnectionPool(Generic[_T]):
         pool = ConnectionPool(create=redis.Redis)
 
     You can also specify the create call by lambda：
-        pool = ConnectionPool(create=lambda: redis.Redis(host='127.0.0.1'))
+        pool = ConnectionPool(create=lambda: redis.Redis(host="127.0.0.1"))
 
     Or through functools.partial
         from functools import partial
-        pool = ConnectionPool(create=partial(redis.Redis, host='127.0.0.1'))
+        pool = ConnectionPool(create=partial(redis.Redis, host="127.0.0.1"))
     """
 
     __wrappers = {}
@@ -107,7 +107,7 @@ class ConnectionPool(Generic[_T]):
             idle: connection idle time, unit (seconds), when the connection is idle for a specified time, it will be released/closed
             block: When the number of connections is full, whether to block waiting for the connection to be released, input False to throw an exception when the connection pool is full
         """
-        if not hasattr(create, '__call__'):
+        if not hasattr(create, "__call__"):
             raise ValueError('"create" argument is not callable')
 
         self._create = create
@@ -127,14 +127,14 @@ class ConnectionPool(Generic[_T]):
 
              pool = ConnectionPool(create=redis.Redis)
              with pool.item() as redis:
-                 redis.set('foo','bar)
+                 redis.set("foo","bar)
          """
         self._lock.acquire()
 
         try:
             while self._max_size and self._pool.empty() and self._size >= self._max_size:
                 if not self._block:
-                    raise TooManyConnections('Too many connections')
+                    raise TooManyConnections("Too many connections")
 
                 self._lock.wait()  # Wait for idle connection
 
@@ -220,21 +220,21 @@ class ConnectionPool(Generic[_T]):
     def _test(self, wrapped):
         """Test the availability of the connection, and throw an Expired exception when it is not available"""
         if self._max_usage and wrapped.usage >= self._max_usage:
-            raise UsageExceeded('Usage exceeds %d times' % self._max_usage)
+            raise UsageExceeded("Usage exceeds %d times" % self._max_usage)
 
         if self._ttl and (wrapped.created + self._ttl) < time.time():
-            raise TtlExceeded('TTL exceeds %d secs' % self._ttl)
+            raise TtlExceeded("TTL exceeds %d secs" % self._ttl)
 
         if self._idle and (wrapped.last + self._idle) < time.time():
-            raise IdleExceeded('Idle exceeds %d secs' % self._idle)
+            raise IdleExceeded("Idle exceeds %d secs" % self._idle)
 
         if self._test_function:
             try:
                 is_healthy = self._test_function(wrapped.connection)
             except Exception as ex:
-                raise Unhealthy('Connection test determined that the connection is not healthy by exception') from ex
+                raise Unhealthy("Connection test determined that the connection is not healthy by exception") from ex
             if not is_healthy:
-                raise Unhealthy('Connection test determined that the connection is not healthy')
+                raise Unhealthy("Connection test determined that the connection is not healthy")
 
     def close(self):
         self._lock.acquire()
