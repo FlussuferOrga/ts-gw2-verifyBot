@@ -46,19 +46,23 @@ class AuditService:
         self._audit_queue.put(queue_entry)
 
     def _start_audit_queue_worker(self):
+        queue = self._audit_queue
+
         def worker():
             LOG.info("Audit Worker is ready and pulling audit jobs")
             while True:
-                item = self._audit_queue.get()
-                LOG.debug('Working on %s. %s still in queue.', item.account_name, self._audit_queue.qsize())
-                self.audit_user(item.account_name, item.api_key, item.client_unique_id)
-                LOG.debug('Finished %s', item.account_name)
-                self._audit_queue.task_done()
-
-                # Log queue size if over ten
-                qsize: int = self._audit_queue.qsize()
-                if qsize >= 10:
-                    LOG.info("Queue Size: %s", qsize)
+                item = None
+                try:
+                    item = queue.get()
+                    LOG.debug('Working on %s (%s):', item.account_name, item.client_unique_id)
+                    self.audit_user(item.account_name, item.api_key, item.client_unique_id)
+                except BaseException as ex:  # any error that occurs
+                    LOG.error("Exception during Audit Queue processing of item: %s.", item, exc_info=ex)
+                else:
+                    LOG.debug('Finished %s', item.account_name)
+                finally:
+                    queue.task_done()  # finish job anyways
+                    LOG.info("Remaining Queue Size: %s", queue.qsize())
 
         # start worker - in theory there could be more than one thread, but this will cause stress on the gw2-api, database and teamspeak
         threading.Thread(name="AuditQueueWorker", target=worker, daemon=True).start()
