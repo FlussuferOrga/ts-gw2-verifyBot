@@ -83,7 +83,7 @@ class User():
             elif self._ts_db_id is not None:
                 self._unique_id = self._ts_facade.client_get_name_from_dbid(client_dbid=self._ts_db_id).get("cluid")
                 # now that the unique id is set, we can redo the whole thing.
-                return self.client_id()
+                return self.client_id
             else:
                 raise ValueError("Client ID can not be retrieved")
         return self._client_id
