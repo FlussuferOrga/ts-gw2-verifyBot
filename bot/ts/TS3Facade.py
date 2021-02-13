@@ -214,11 +214,29 @@ class TS3Facade:
                     return None
         raise ex
 
-    def client_ids_from_uid(self, client_uid):
-        return self._ts3_connection.ts3exec_raise(lambda t: t.query("clientgetids", cluid=client_uid).all())
+    def client_ids_from_uid(self, client_uid) -> List[str]:
+        response, ex = self._ts3_connection.ts3exec(lambda t: t.query("clientgetids", cluid=client_uid).all(), exception_handler=signal_exception_handler)
+        if ex is None:
+            return response
+        else:
+            if hasattr(ex, "resp") and ex.resp is not None:
+                if ex.resp.error["id"] == "1281":  # database empty result set
+                    return []
+        raise ex
 
     def force_rename(self, target_nickname: str):
         return self._ts3_connection.force_rename(target_nickname=target_nickname)
+
+    def client_get_uid_from_dbid(self, client_db_id: str):
+        response, ex = self._ts3_connection.ts3exec(lambda t: t.query("clientgetnamefromdbid", cldbid=client_db_id).first().get("cluid"), exception_handler=signal_exception_handler)
+        if ex is None:
+            return response
+        else:
+            if hasattr(ex, "resp") and ex.resp is not None:
+                if ex.resp.error["id"] == "512":
+                    # user not found
+                    return None
+        raise ex
 
     def channel_edit(self, channel_id: str, new_channel_name: str):
         return self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("channeledit", cid=channel_id, channel_name=new_channel_name), signal_exception_handler)

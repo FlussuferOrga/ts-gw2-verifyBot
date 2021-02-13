@@ -1,4 +1,8 @@
+import logging
+
 from bot.ts.ThreadSafeTSConnection import default_exception_handler
+
+LOG = logging.getLogger(__name__)
 
 
 class User():
@@ -26,7 +30,10 @@ class User():
 
     @property
     def current_channel(self):
-        client_info = self._ts_facade.client_info(client_id=self.client_id)
+        client_id = self.client_id
+        if client_id is None:
+            return None
+        client_info = self._ts_facade.client_info(client_id=client_id)
         if client_info:
             self._ts_db_id = client_info.get("client_database_id")  # since we are already retrieving this information...
         return Channel(client_info.get("cid")) if client_info else None
@@ -66,10 +73,17 @@ class User():
         if self._client_id is None:
             if self._unique_id is not None:
                 # easiest case: unique ID is set
-                self._client_id = self._ts_facade.client_ids_from_uid(client_uid=self._unique_id)[0].get("clid")  # use first and hope for the best.
+                found_client_ids = self._ts_facade.client_ids_from_uid(client_uid=self._unique_id)
+                if len(found_client_ids) == 0:
+                    return None  # user might be offline
+                else:
+                    if len(found_client_ids) != 1:
+                        LOG.warning("Found multiple online clients for client with uid %s . Picking the first one", self._unique_id)
+                    self._client_id = found_client_ids[0].get("clid")
             elif self._ts_db_id is not None:
                 self._unique_id = self._ts_facade.client_get_name_from_dbid(client_dbid=self._ts_db_id).get("cluid")
-                self._client_id = self._ts_facade.client_ids_from_uid(client_uid=self._unique_id)[0].get("clid")  # use first and hope for the best.
+                # now that the unique id is set, we can redo the whole thing.
+                return self.client_id()
             else:
                 raise ValueError("Client ID can not be retrieved")
         return self._client_id
