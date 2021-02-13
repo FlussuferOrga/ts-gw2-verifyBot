@@ -50,8 +50,8 @@ class CommanderService:
                     path = []
                     cid = ts_entry.get("cid")
                     while cid is not None:
-                        channel_info, ex2 = ts_facade.channel_info(channel_id=cid)
-                        LOG.error(ex2)
+                        channel_info, ex = ts_facade.channel_info(channel_id=cid)
+                        LOG.error(ex)
                         path.append(channel_info.get("channel_name"))
                         if channel_info.get("pid") is None or channel_info.get('pid') == '0':
                             cid = None
@@ -61,8 +61,8 @@ class CommanderService:
                     ac["ts_channel_name"] = path[0]  # channel the commander is in
                     ac["ts_channel_path"] = path[::-1]  # tree branch (reverse)
 
-                    if ex2:
-                        LOG.warning("Could not determine information for commanding user with ID %s: '%s'. Skipping.", str(ts_entry), ", ".join([str(e) for e in [ex1, ex2] if e is not None]))
+                    if ex is not None:
+                        LOG.warning("Could not determine information for commanding user with ID %s: '%s'. Skipping.", str(ts_entry), str(ex))
                     else:
                         active_commanders.append(ac)
             return {"commanders": active_commanders}
