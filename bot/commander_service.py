@@ -5,6 +5,7 @@ from bot.ts.user import User
 from .connection_pool import ConnectionPool
 from .ts import TS3Facade
 from .user_service import UserService
+from .util import strip_ts_channel_name_tags
 
 LOG = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ class CommanderService:
                     while cid is not None:
                         channel_info, ex = ts_facade.channel_info(channel_id=cid)
                         LOG.error(ex)
-                        path.append(channel_info.get("channel_name"))
+                        path.append(strip_ts_channel_name_tags(channel_info.get("channel_name")))
                         if channel_info.get("pid") is None or channel_info.get('pid') == '0':
                             cid = None
                         else:

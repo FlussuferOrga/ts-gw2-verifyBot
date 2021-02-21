@@ -19,7 +19,7 @@ class ResetRosterController(AbstractController):
         @self.api.route("/resetroster", methods=["POST"])
         def _reset_roster():
             body = request.json
-            date = try_get(body, "date", default="dd.mm.yyyy")
+            date = try_get(body, "date", default="dd.mm.yyyy HH:mm z")
             red = try_get(body, "rbl", default=[])
             green = try_get(body, "gbl", default=[])
             blue = try_get(body, "bbl", default=[])
