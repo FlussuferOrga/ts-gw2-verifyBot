@@ -51,7 +51,7 @@ pool_max_usage = 5
 # Port used in links on /commanders to join teamspeak. numeric Port or "auto" to detect from virtualserver. Default = auto
 # server_public_port = 12345
 
-# Port used in links on /commanders to join teamspeak. numeric Port or "auto" to detect from virtualserver. Default = auto
+# Password used in links on /commanders to join teamspeak. Empty = no password. Default = None
 # server_public_password = mypass
 
 #Default is one (only change if you have multple servers)
