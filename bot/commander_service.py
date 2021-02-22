@@ -1,6 +1,6 @@
 import logging
 import urllib.parse
-from typing import Dict
+from typing import Dict, Optional
 
 from bot.config import Config
 from bot.ts.user import User
@@ -20,6 +20,7 @@ class CommanderService:
 
         self._server_public_address = config.server_public_address
         self._server_public_port = config.server_public_port
+        self._server_public_password = config.server_public_password
 
         with self._ts_connection_pool.item() as facade:
             channel_list, ex = facade.channelgroup_list()
@@ -27,7 +28,10 @@ class CommanderService:
 
             server_info = facade.server_info()
             self._vs_port = server_info.get("virtualserver_port")
-            self._vs_password = server_info.get("virtualserver_password", "")
+
+            if len(server_info.get("virtualserver_password", "")) > 0 and self._server_public_password is None:
+                LOG.warning("Server is password protected, but no password is configured in the config. "
+                            "Links will not be usable without a password")
 
         if len(cgroups) < 1:
             LOG.info("Could not find any group of %s to determine commanders by. Disabling this feature.", str(self._commander_group_names))
@@ -88,20 +92,21 @@ class CommanderService:
                 cid = channel_info.get("pid")
         return ex, path
 
-    def _create_join_link(self, channel_id: str) -> str:
-        args: Dict[str] = {
-            "cid": channel_id
-        }
+    def _create_join_link(self, channel_id: Optional[str]) -> str:
+        args: Dict[str] = {}
 
-        if self._vs_password != "":
-            args["password"] = self._vs_password
+        if self._server_public_password is not None and self._server_public_password != "":
+            args["password"] = self._server_public_password
 
         if self._server_public_port:
             if self._server_public_port == "auto":
                 if self._vs_port != "9987":
-                    self._server_public_port = self._vs_port
+                    args["port"] = self._vs_port
             else:
                 args["port"] = self._server_public_port
+
+        if channel_id is not None:
+            args["cid"] = channel_id
 
         servername = self._server_public_address
         return self._build_url("https://invite.teamspeak.com", "%s/" % servername, args)
