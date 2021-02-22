@@ -245,6 +245,10 @@ class TS3Facade:
         icon_server_path: str = f"/icon_{icon_id}"
         return self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("ftdeletefile", cid=0, cpw=None, name=icon_server_path), ignore_exception_handler)
 
+    def server_info(self):
+        return self._ts3_connection.ts3exec_raise(lambda t: t.query("serverinfo").first())
+        pass
+
 
 class Channel:
     def __init__(self, channel_id, channel_name):

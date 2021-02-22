@@ -29,6 +29,8 @@ class Config:
 
         # Teamspeak Other Settings
         self.server_id = configs.get("teamspeak other settings", "server_id")
+        self.server_public_address = configs.get("teamspeak other settings", "server_public_address", fallback=self.host)
+        self.server_public_port = configs.get("teamspeak other settings", "server_public_port", fallback="auto")
         self.channel_name = configs.get("teamspeak other settings", "channel_name")
         self.verified_group = configs.get("teamspeak other settings", "verified_group")
         self.verified_group_id = -1  # will be cached later

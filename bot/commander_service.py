@@ -1,4 +1,6 @@
 import logging
+import urllib.parse
+from typing import Dict
 
 from bot.config import Config
 from bot.ts.user import User
@@ -16,9 +18,17 @@ class CommanderService:
         self._ts_connection_pool = ts_connection_pool
         self._user_service = user_service
 
+        self._server_public_address = config.server_public_address
+        self._server_public_port = config.server_public_port
+
         with self._ts_connection_pool.item() as facade:
             channel_list, ex = facade.channelgroup_list()
             cgroups = list(filter(lambda g: g.get("name") in self._commander_group_names, channel_list))
+
+            server_info = facade.server_info()
+            self._vs_port = server_info.get("virtualserver_port")
+            self._vs_password = server_info.get("virtualserver_password", "")
+
         if len(cgroups) < 1:
             LOG.info("Could not find any group of %s to determine commanders by. Disabling this feature.", str(self._commander_group_names))
             self._commander_groups = []
@@ -39,7 +49,8 @@ class CommanderService:
                 client_dbid = ts_entry.get("cldbid")
                 user = User(ts_facade, ts_db_id=client_dbid)
                 channel = user.current_channel
-                if channel is not None and channel.channel_id == ts_entry.get("cid"):  # user not online or in channel
+                lead_channel_id = ts_entry.get("cid")
+                if channel is not None and channel.channel_id == lead_channel_id:  # user not online or in channel
                     db_entry = self._user_service.get_user_database_entry(user.unique_id)
                     # user could have the group in a channel but not be in there atm
                     ac = {
@@ -48,22 +59,57 @@ class CommanderService:
                         "ts_display_name": user.name
                     }
 
-                    path = []
-                    cid = ts_entry.get("cid")
-                    while cid is not None:
-                        channel_info, ex = ts_facade.channel_info(channel_id=cid)
-                        LOG.error(ex)
-                        path.append(strip_ts_channel_name_tags(channel_info.get("channel_name")))
-                        if channel_info.get("pid") is None or channel_info.get('pid') == '0':
-                            cid = None
-                        else:
-                            cid = channel_info.get("pid")
+                    ex, path = self.fetch_branch(lead_channel_id, ts_facade)
 
-                    ac["ts_channel_name"] = path[0]  # channel the commander is in
-                    ac["ts_channel_path"] = path[::-1]  # tree branch (reverse)
+                    display_path = list(map(strip_ts_channel_name_tags, path))
+                    ac["ts_channel_name"] = display_path[0]  # channel the commander is in
+                    ac["ts_channel_path"] = display_path[::-1]  # tree branch (reverse)
+
+                    ac["ts_join_url"] = self._create_join_link(lead_channel_id)  # tree branch (reverse)
 
                     if ex is not None:
                         LOG.warning("Could not determine information for commanding user with ID %s: '%s'. Skipping.", str(ts_entry), str(ex))
                     else:
                         active_commanders.append(ac)
             return {"commanders": active_commanders}
+
+    @staticmethod
+    def fetch_branch(lead_cid, ts_facade):
+        ex = None
+        path = []
+        cid = lead_cid
+        while cid is not None:
+            channel_info, ex = ts_facade.channel_info(channel_id=cid)
+            LOG.error(ex)
+            path.append(channel_info.get("channel_name"))
+            if channel_info.get("pid") is None or channel_info.get('pid') == '0':
+                cid = None
+            else:
+                cid = channel_info.get("pid")
+        return ex, path
+
+    def _create_join_link(self, channel_id: str) -> str:
+        args: Dict[str] = {
+            "cid": channel_id
+        }
+
+        if self._vs_password != "":
+            args["password"] = self._vs_password
+
+        if self._server_public_port:
+            if self._server_public_port == "auto":
+                if self._vs_port != "9987":
+                    self._server_public_port = self._vs_port
+            else:
+                args["port"] = self._server_public_port
+
+        servername = self._server_public_address
+        return self._build_url("https://invite.teamspeak.com", "%s/" % servername, args)
+
+    @staticmethod
+    def _build_url(base_url, path, args_dict):
+        # Returns a list in the structure of urlparse.ParseResult
+        url_parts = list(urllib.parse.urlparse(base_url))
+        url_parts[2] = path
+        url_parts[4] = urllib.parse.urlencode(args_dict)
+        return urllib.parse.urlunparse(url_parts)

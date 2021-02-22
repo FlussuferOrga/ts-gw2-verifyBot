@@ -45,6 +45,12 @@ pool_max_usage = 5
 
 [teamspeak other settings]
 
+# Address used in links on /commanders to join teamspeak. Default = [teamspeak connection settings].host
+# server_public_address = my-ts.example.com
+
+# Port used in links on /commanders to join teamspeak. numeric Port or "auto" to detect from virtualserver. Default = auto
+# server_public_port = 12345
+
 #Default is one (only change if you have multple servers)
 server_id = 1
 
