@@ -14,7 +14,7 @@ paths:
         default:
           $ref: '#/components/responses/genericErrorResponse'
         200:
-          description: Response with active commanders
+          description: Health Check
           content:
             text/plain:
               schema:
@@ -42,7 +42,7 @@ paths:
         default:
           $ref: '#/components/responses/genericErrorResponse'
         200:
-          description: Response with active commanders
+          description: User registration details
           content:
             application/json:
               schema:
@@ -82,6 +82,8 @@ paths:
                         ts_cluid:
                           type: string
                         ts_display_name:
+                          type: string
+                        ts_join_url:
                           type: string
 
   /guild:
