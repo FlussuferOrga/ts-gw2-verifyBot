@@ -2,15 +2,18 @@ name: Lint
 on:
   push:
     paths:
+      - '**requirements.txt'
       - '**.py'
       - '.flake8'
       - '.pylintrc'
       - '**.yml'
   pull_request:
     paths:
+      - '**requirements.txt'
       - '**.py'
       - '.flake8'
       - '.pylintrc'
+      - '**.yml'
 jobs:
   Flake8:
     runs-on: ubuntu-latest
