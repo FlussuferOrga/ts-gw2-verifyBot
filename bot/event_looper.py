@@ -3,12 +3,12 @@ import logging
 import re
 import sqlite3
 import threading
+import time
 from typing import Optional
 
-import time
 from ts3.response import TS3Event
 
-from bot.TS3Auth import AuthRequest
+from bot.TS3Auth import AuthRequest, AuthorizationNotPossibleError
 from bot.db import ThreadSafeDBConnection
 from bot.ts import Channel, TS3Facade, User
 from .audit_service import AuditService
@@ -181,40 +181,43 @@ class EventLooper:
                     uapi = pair.group(1)
 
                     if self._user_service.check_client_needs_verify(rec_from_uid):
-                        LOG.info("Received verify response from %s", rec_from_name)
+                        LOG.info("Received verify request from %s", rec_from_name)
+                        try:
+                            auth = AuthRequest(uapi, self._config.required_servers, int(self._config.required_level))
 
-                        auth = AuthRequest(uapi, self._config.required_servers, int(self._config.required_level))
+                            LOG.debug('Name: |%s| API: |%s|', auth.name, uapi)
 
-                        LOG.debug('Name: |%s| API: |%s|', auth.name, uapi)
+                            if auth.success:
+                                limit_hit = self._user_service.is_ts_registration_limit_reached(auth.name)
+                                if self._config.DEBUG:
+                                    LOG.debug("Limit hit check: %s", limit_hit)
+                                if not limit_hit:
+                                    LOG.info("Setting permissions for %s as verified.", rec_from_name)
 
-                        if auth.success:
-                            limit_hit = self._user_service.is_ts_registration_limit_reached(auth.name)
-                            if self._config.DEBUG:
-                                LOG.debug("Limit hit check: %s", limit_hit)
-                            if not limit_hit:
-                                LOG.info("Setting permissions for %s as verified.", rec_from_name)
+                                    # set permissions
+                                    self._user_service.set_permissions(rec_from_uid)
 
-                                # set permissions
-                                self._user_service.set_permissions(rec_from_uid)
+                                    # get todays date
+                                    today_date = datetime.date.today()
 
-                                # get todays date
-                                today_date = datetime.date.today()
+                                    # Add user to database so we can query their API key over time to ensure they are still on our server
+                                    self._user_service.add_user_to_database(rec_from_uid, auth.name, uapi, today_date, today_date)
+                                    self._user_service.update_guild_tags(self._ts_facade, User(self._ts_facade, unique_id=rec_from_uid), auth)
+                                    # self.updateGuildTags(rec_from_uid, auth)
+                                    LOG.debug("Added user to DB with ID %s", rec_from_uid)
 
-                                # Add user to database so we can query their API key over time to ensure they are still on our server
-                                self._user_service.add_user_to_database(rec_from_uid, auth.name, uapi, today_date, today_date)
-                                self._user_service.update_guild_tags(self._ts_facade, User(self._ts_facade, unique_id=rec_from_uid), auth)
-                                # self.updateGuildTags(rec_from_uid, auth)
-                                LOG.debug("Added user to DB with ID %s", rec_from_uid)
-
-                                # notify user they are verified
-                                self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_success"))
+                                    # notify user they are verified
+                                    self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_success"))
+                                else:
+                                    # client limit is set and hit
+                                    self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_limit_Hit"))
+                                    LOG.info("Received API Auth from %s, but %s has reached the client limit.", rec_from_name, rec_from_name)
                             else:
-                                # client limit is set and hit
-                                self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_limit_Hit"))
-                                LOG.info("Received API Auth from %s, but %s has reached the client limit.", rec_from_name, rec_from_name)
-                        else:
-                            # Auth Failed
-                            self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_fail"))
+                                # Auth Failed
+                                self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_fail"))
+                        except AuthorizationNotPossibleError as ex:
+                            LOG.warning("Audit of Teamspeak user %s is currently not possible. Skipping.", rec_from_name, ex)
+                            self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_verification_currently_not_possible"))
                     else:
                         LOG.debug("Received API Auth from %s, but %s is already verified. Notified user as such.", rec_from_name, rec_from_name)
                         self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_alrdy_verified"))

@@ -1,3 +1,4 @@
+import logging
 from typing import List, Optional
 
 from cachetools import LRUCache, TTLCache, cached
@@ -7,7 +8,6 @@ from .account import Account
 from .character import Character
 from .guild import AnonymousGuild, Guild
 from .world import World
-
 
 # Available api endpoints:
 #     account, accountachievements, accountbank, accountdungeons, accountdyes,
@@ -31,6 +31,7 @@ from .world import World
 #     tokeninfo, traits, version, worlds, wvw, wvwabilities,
 #     wvwmatches, wvwmatchesstatsteams, wvwobjectives, wvwranks, wvwupgrades
 #
+LOG = logging.getLogger(__name__)
 
 
 @cached(cache=TTLCache(maxsize=32, ttl=300))  # cache user specific clients for 5 min - creation takes quite long
@@ -43,11 +44,25 @@ _anonymousClient = _create_client()  # this client can be reused, to save initia
 
 def _check_error(result):
     if "text" in result:
-        raise ApiError(result["text"])
+        error_text = result["text"]
+        LOG.info("Api returned error: " + error_text)
+        if error_text == "ErrTimeout":  # happens on login server down
+            raise ApiUnavailableError(error_text)
+        if error_text == "invalid key" or error_text == "Invalid access token":  # when key is invalid or not a key at all
+            raise ApiKeyInvalidError(error_text)
+        raise ApiError(error_text)
     return result
 
 
 class ApiError(RuntimeError):
+    pass
+
+
+class ApiUnavailableError(ApiError):
+    pass
+
+
+class ApiKeyInvalidError(ApiError):
     pass
 
 

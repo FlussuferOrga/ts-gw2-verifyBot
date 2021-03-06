@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from queue import PriorityQueue
 
-from bot.TS3Auth import AuthRequest
+from bot.TS3Auth import AuthRequest, AuthorizationNotPossibleError
 from bot.config import Config
 from bot.connection_pool import ConnectionPool
 from bot.db import ThreadSafeDBConnection
@@ -68,18 +68,21 @@ class AuditService:
         threading.Thread(name="AuditQueueWorker", target=worker, daemon=True).start()
 
     def audit_user(self, account_name, api_key, client_unique_id):
-        auth = AuthRequest(api_key, self._config.required_servers, int(self._config.required_level), account_name)
-        if auth.success:
-            LOG.info("User %s is still on %s. Successful audit!", account_name, auth.world.get("name"))
-            with self._ts_connection_pool.item() as ts_facade:
-                self._user_service.update_guild_tags(ts_facade, User(ts_facade, unique_id=client_unique_id), auth)
-            with self._database_connection.lock:
-                self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", ((date.today()), client_unique_id,))
-                self._database_connection.conn.commit()
-        else:
-            LOG.info("User %s is no longer on our server. Removing access....", account_name)
-            self._user_service.remove_permissions(client_unique_id)
-            self._user_service.remove_user_from_db(client_unique_id)
+        try:
+            auth = AuthRequest(api_key, self._config.required_servers, int(self._config.required_level), account_name)
+            if auth.success:
+                LOG.info("User %s is still on %s. Successful audit!", account_name, auth.world.get("name"))
+                with self._ts_connection_pool.item() as ts_facade:
+                    self._user_service.update_guild_tags(ts_facade, User(ts_facade, unique_id=client_unique_id), auth)
+                with self._database_connection.lock:
+                    self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", ((date.today()), client_unique_id,))
+                    self._database_connection.conn.commit()
+            else:
+                LOG.info("User %s is no longer on our server. Removing access....", account_name)
+                self._user_service.remove_permissions(client_unique_id)
+                self._user_service.remove_user_from_db(client_unique_id)
+        except AuthorizationNotPossibleError as ex:
+            LOG.warning("Audit of user %s is currently not possible. Skipping.", account_name, ex)
 
     def trigger_user_audit(self):
         LOG.info("Auditing users")

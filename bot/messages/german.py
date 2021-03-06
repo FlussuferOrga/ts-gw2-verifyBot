@@ -25,15 +25,17 @@ class German(Locale):
         # Message sent for failed verification
         self.set("bot_msg_fail",
                  "Leider hat die Freischaltung nicht funktioniert."
-                 " Bitte einen Teamspeak Administrator die Logs zu prüfen.\n"
+                 " Bitte einen TeamSpeak Administrator die Logs zu prüfen.\n"
                  "~ Wahrscheinlich ein ungültiger API-Schlüssel oder falsche API-Einstellungen."
                  " (Der API-Schlüssel braucht die Berechtigungen 'account' und 'character' )" + self.get("bot_msg_note"))
 
+        self.set("bot_msg_verification_currently_not_possible", "Leider können wir dich aktuell nicht verifizieren. Bitte einen TeamSpeak Admin um Unterstützung.")
+
         # Message sent for client TS ID limit reached (trying to access Teamspeack from a second computer after having authenticated on a prior machine
         self.set("bot_msg_limit_Hit",
-                 "Die Teamspeak Admins haben ein Limit gesetzt, auf wie vielen Geräten du dich mit deinem Guild Wars 2"
+                 "Die TeamSpeak Admins haben ein Limit gesetzt, auf wie vielen Geräten du dich mit deinem Guild Wars 2"
                  " Account freischalten kannst. Du bist bereits von einem anderen Gerät aus registriert "
-                 "(oder du hat Teamspeak neu installiert, wodurch deine Teamspeak ID für diesen Server zurückgesetzt wurde).")
+                 "(oder du hat TeamSpeak neu installiert, wodurch deine TeamSpeak ID für diesen Server zurückgesetzt wurde).")
 
         # Message sent to someone who is already verified but asks to be verified
         self.set("bot_msg_alrdy_verified", "Es scheint, als seist du bereits freigeschaltet! Wieso quälst du mich sooo /cry")
@@ -66,7 +68,7 @@ class German(Locale):
         # User passed an invalid guild
         self.set("bot_hide_guild_unknown",
                  "Tut mir Leid, eine solche Gilde scheint es nicht zu geben oder du hast sie bereits versteckt. "
-                 "Bitte stelle sicher, dass du die exakte Schreibweise der Gildengruppe hier im Teamspeak verwendest.")
+                 "Bitte stelle sicher, dass du die exakte Schreibweise der Gildengruppe hier im TeamSpeak verwendest.")
 
         # User passed an invalid hide guild command
         self.set("bot_hide_guild_help", "Bitte nutze folgendes Format: hideguild TAG")
@@ -80,6 +82,6 @@ class German(Locale):
         # User passed an invalid guild
         self.set("bot_unhide_guild_unknown",
                  "Tut mir Leid, eine solche Gilde scheint es nicht zu geben or du hattest die Gruppe nicht versteckt."
-                 " Bitte stelle sicher, dass du die exakte Schreibweise der Gildengruppe hier im Teamspeak verwendest.")
+                 " Bitte stelle sicher, dass du die exakte Schreibweise der Gildengruppe hier im TeamSpeak verwendest.")
 
         self.set("bot_pong_response", "Pong! Ich lebe noch!")

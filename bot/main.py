@@ -1,11 +1,11 @@
 #!/usr/bin/python
 import logging
+import time  # time for sleep function
 from argparse import Namespace
 from typing import Tuple
 
 import configargparse
 import schedule
-import time  # time for sleep function
 import ts3
 
 from bot import Bot

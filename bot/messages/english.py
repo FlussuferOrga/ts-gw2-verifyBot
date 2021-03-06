@@ -19,14 +19,16 @@ class English(Locale):
 
         # Message sent for failed verification
         self.set("bot_msg_fail",
-                 "Unfortuntely your authentication failed. Ask the Teamspeak admin to review the logs.\n"
+                 "Unfortuntely your authentication failed. Ask the TeamSpeak admin to review the logs.\n"
                  "~ Likely a bad API key or incorrect API settings. (API Key needs access to 'account' and 'character' )"
                  + self.get("bot_msg_note"))
+
+        self.set("bot_msg_verification_currently_not_possible", "Unfortunately we are currently not able to verify you. Ask the TeamSpeak admin for assistance")
 
         # Message sent for client TS ID limit reached (trying to access Teamspeack from a second computer after having authenticated on a prior machine
         self.set("bot_msg_limit_Hit",
                  "The TeamSpeak Admins have set a limit to how many computers can authenticate with your Guild Wars 2 account. "
-                 "You are already authenticated from a different computer (or you reinstalled Teamspeak client which reset your TeamSpeak ID with this server).")
+                 "You are already authenticated from a different computer (or you reinstalled TeamSpeak client which reset your TeamSpeak ID with this server).")
 
         # Message sent to someone who is already verified but asks to be verified
         self.set("bot_msg_alrdy_verified", "It looks like you are already verified! Why do you torture me sooo /cry")

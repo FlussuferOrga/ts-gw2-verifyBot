@@ -14,6 +14,10 @@ h_char_chk = '[CharacterCheck]'
 
 #############################
 
+class AuthorizationNotPossibleError(RuntimeError):
+    pass
+
+
 # Class for an authentication request from user
 
 class AuthRequest:
@@ -48,6 +52,8 @@ class AuthRequest:
             self.char_dump = gw2api.characters_get(self.key)
             LOG.info("%s %s Character data loaded for %s.", h_hdr, h_char, self.user)
             self.charCheck()
+        except gw2api.ApiUnavailableError as ex:
+            raise AuthorizationNotPossibleError from ex
         except gw2api.ApiError:
             LOG.error("%s %s Unable to load character data for %s. Bad API key or API key is not set to allow 'character' queries.", h_hdr, h_char, self.user)
 
@@ -56,6 +62,8 @@ class AuthRequest:
             self.getAccountDetails()
             LOG.info("%s %s Account loaded for %s", h_hdr, h_acct, self.user)
             self.authCheck()
+        except gw2api.ApiUnavailableError as ex:
+            raise AuthorizationNotPossibleError from ex
         except gw2api.ApiError:
             LOG.error("%s %s Possibly bad API Key. Error obtaining account details for %s. (Does the API key allow 'account' queries?)", h_hdr, h_acct, self.user)
 
