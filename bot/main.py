@@ -65,6 +65,7 @@ def _continuous_loop(config, database, ts_connection_pool):
             bot_instance = Bot(database, ts_connection_pool, config)
 
             http_server = server.create_http_server(bot_instance, port=config.ipc_port)
+            audit_job = None
             try:
                 http_server.start()
 
@@ -73,8 +74,8 @@ def _continuous_loop(config, database, ts_connection_pool):
                 # times before audit interval hits, so we can ensure we maintain user database accurately)
                 bot_instance.trigger_user_audit()
 
-                #                     # Set audit schedule job to run in X days
-                audit_job = schedule.every(config.audit_interval).days.do(bot_instance.trigger_user_audit)
+                # Set audit schedule job to run in X days
+                audit_job = schedule.every(config.audit_interval).days.at("06:00").do(bot_instance.trigger_user_audit)
 
                 bot_instance.listen_for_events()
             finally:
