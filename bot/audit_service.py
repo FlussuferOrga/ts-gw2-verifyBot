@@ -82,7 +82,7 @@ class AuditService:
                 self._user_service.remove_permissions(client_unique_id)
                 self._user_service.remove_user_from_db(client_unique_id)
         except AuthorizationNotPossibleError as ex:
-            LOG.warning("Audit of user %s is currently not possible. Skipping.", account_name, ex)
+            LOG.warning("Audit of user %s is currently not possible. Skipping.", account_name, exc_info=ex)
 
     def trigger_user_audit(self):
         LOG.info("Auditing users")

@@ -8,9 +8,9 @@ from typing import Optional
 
 from ts3.response import TS3Event
 
-from bot.TS3Auth import AuthRequest, AuthorizationNotPossibleError
 from bot.db import ThreadSafeDBConnection
 from bot.ts import Channel, TS3Facade, User
+from .TS3Auth import AuthRequest, AuthorizationNotPossibleError
 from .audit_service import AuditService
 from .config import Config
 from .connection_pool import ConnectionPool
@@ -216,7 +216,7 @@ class EventLooper:
                                 # Auth Failed
                                 self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_fail"))
                         except AuthorizationNotPossibleError as ex:
-                            LOG.warning("Audit of Teamspeak user %s is currently not possible. Skipping.", rec_from_name, ex)
+                            LOG.warning("Audit of Teamspeak user %s is currently not possible. Skipping.", rec_from_name, exc_info=ex)
                             self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_verification_currently_not_possible"))
                     else:
                         LOG.debug("Received API Auth from %s, but %s is already verified. Notified user as such.", rec_from_name, rec_from_name)
