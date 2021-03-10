@@ -65,7 +65,7 @@ class ThreadSafeTSConnection:
         self._server_id = server_id
         self._known_hosts_file = known_hosts_file
 
-        self._bot_nickname = bot_nickname + '-' + str(id(self))
+        self._bot_nickname = (bot_nickname + '-' + str(id(self)))[:30]
         self.lock = RLock()
         self.ts_connection = None  # done in init()
         self._keepalive_job = None
