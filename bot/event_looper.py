@@ -3,9 +3,9 @@ import logging
 import re
 import sqlite3
 import threading
-import time
 from typing import Optional
 
+import time
 from ts3.response import TS3Event
 
 from bot.db import ThreadSafeDBConnection
@@ -189,7 +189,7 @@ class EventLooper:
 
                             if auth.success:
                                 limit_hit = self._user_service.is_ts_registration_limit_reached(auth.name)
-                                if self._config.DEBUG:
+                                if self._config.debug:
                                     LOG.debug("Limit hit check: %s", limit_hit)
                                 if not limit_hit:
                                     LOG.info("Setting permissions for %s as verified.", rec_from_name)

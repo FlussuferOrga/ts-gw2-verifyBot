@@ -45,7 +45,7 @@ _anonymousClient = _create_client()  # this client can be reused, to save initia
 def _check_error(result):
     if "text" in result:
         error_text = result["text"]
-        LOG.info("Api returned error: " + error_text)
+        LOG.info("Api returned error: %s", error_text)
         if error_text == "ErrTimeout":  # happens on login server down
             raise ApiUnavailableError(error_text)
         if error_text == "invalid key" or error_text == "Invalid access token":  # when key is invalid or not a key at all

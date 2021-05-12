@@ -260,10 +260,10 @@ class GuildService:
         return channel_name
 
     @staticmethod
-    def _create_guild_channel_description(contacts, id, name, tag):
+    def _create_guild_channel_description(contacts, guild_id, name, tag):
         contacts = "\n".join(["    • %s" % c for c in contacts])
         text = (f"[center]\n"
-                f"[img]https://emblem.werdes.net/emblem/{id}/128[/img]\n"
+                f"[img]https://emblem.werdes.net/emblem/{guild_id}/128[/img]\n"
                 f"[size=20]{name} - {tag}[/size]\n"
                 f"[/center]\n"
                 f"[hr]\n"

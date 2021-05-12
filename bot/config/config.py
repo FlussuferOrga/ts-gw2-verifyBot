@@ -79,7 +79,7 @@ class Config:
 
         # Constants
         self.keepalive_interval = 60
-        self.DEBUG = ast.literal_eval(configs.get("DEBUGGING", "DEBUG"))  # Debugging (on or off) True/False
+        self.debug = ast.literal_eval(configs.get("DEBUGGING", "DEBUG"))  # Debugging (on or off) True/False
 
         # Locale
         locale_setting = self._try_get(configs, "bot settings", "locale", "EN")
