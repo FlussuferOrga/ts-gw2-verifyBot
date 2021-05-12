@@ -1,7 +1,7 @@
 requests==2.25.1
 schedule==1.1.0
 ts3==2.0.0b2
-Flask==1.1.2
+Flask==2.0.0
 flask-cors==3.0.10
 waitress==2.0.0
 GuildWars2-API-Client==0.5.9
