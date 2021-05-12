@@ -7,3 +7,4 @@ waitress==2.0.0
 GuildWars2-API-Client==0.5.9
 cachetools==4.2.2
 ConfigArgParse==1.4.1
+coloredlogs==15.0
