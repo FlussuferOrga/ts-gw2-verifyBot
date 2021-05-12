@@ -1,9 +1,11 @@
 from unittest import TestCase
 from unittest.mock import MagicMock
 
-from flask import Flask, Response, json
+from flask import Flask, json
+from werkzeug.test import TestResponse
 
 import bot
+import bot.rest.bootstrap
 from bot.rest.controller import GuildController
 
 
@@ -18,7 +20,7 @@ class TestGuildController(TestCase):
         controller = GuildController(self._service_mock)
 
         flask.register_blueprint(controller.api)
-        bot.rest.server.register_error_handlers(flask)
+        bot.rest.bootstrap.register_error_handlers(flask)
 
         self._app = flask.test_client()
 
@@ -34,7 +36,7 @@ class TestGuildController(TestCase):
 
         self._service_mock.create_guild = MagicMock(return_value=0)
 
-        result: Response = self._app.post(
+        result: TestResponse = self._app.post(
             "/guild",
             data=json.dumps(request_data),
             content_type='application/json'
@@ -57,7 +59,7 @@ class TestGuildController(TestCase):
 
         self._service_mock.create_guild = MagicMock(return_value=0)
 
-        result: Response = self._app.post(
+        result: TestResponse = self._app.post(
             "/guild",
             data=json.dumps(request_data),
             content_type='application/json'
@@ -80,7 +82,7 @@ class TestGuildController(TestCase):
 
         self._service_mock.create_guild = MagicMock(return_value=-123)  # any unexpected return code
 
-        result: Response = self._app.post(
+        result: TestResponse = self._app.post(
             "/guild",
             data=json.dumps(request_data),
             content_type='application/json'
@@ -103,7 +105,7 @@ class TestGuildController(TestCase):
 
         self._service_mock.remove_guild = MagicMock(return_value=0)  # any unexpected return code
 
-        result: Response = self._app.delete(
+        result: TestResponse = self._app.delete(
             "/guild",
             data=json.dumps(request_data),
             content_type='application/json'
@@ -121,7 +123,7 @@ class TestGuildController(TestCase):
 
         self._service_mock.remove_guild = MagicMock(return_value=-1)  # any unexpected return code
 
-        result: Response = self._app.delete(
+        result: TestResponse = self._app.delete(
             "/guild",
             data=json.dumps(request_data),
             content_type='application/json'

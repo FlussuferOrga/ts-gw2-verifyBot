@@ -1,18 +1,18 @@
 #!/usr/bin/python
 import logging
-import time  # time for sleep function
 from argparse import Namespace
 from typing import Tuple
 
 import configargparse
 import schedule
+import time  # time for sleep function
 import ts3
 
 from bot import Bot
 from bot.config import Config
 from bot.connection_pool import ConnectionInitializationException, ConnectionPool
 from bot.db import get_or_create_database
-from bot.rest import server
+from bot.rest import create_http_server
 from bot.ts import TS3Facade, create_connection
 from bot.util import RepeatTimer
 
@@ -64,7 +64,7 @@ def _continuous_loop(config, database, ts_connection_pool):
             LOG.info("Connecting to Teamspeak server...")
             bot_instance = Bot(database, ts_connection_pool, config)
 
-            http_server = server.create_http_server(bot_instance, port=config.ipc_port)
+            http_server = create_http_server(bot_instance, port=config.ipc_port)
             audit_job = None
             try:
                 http_server.start()
