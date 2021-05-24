@@ -41,7 +41,7 @@ class TS3FacadeTest(TestCase):
 
         repo = TS3Facade(ts3_connection_mock)
 
-        result = repo.channel_find("test123")
+        result = repo.channel_find_first("test123")
 
         ts3_connection_mock.ts3exec.assert_called_once()  # TODO: we can not check for the parameters because it is a lambda
         self.assertEqual(result.channel_id, "42")
@@ -57,7 +57,7 @@ class TS3FacadeTest(TestCase):
 
         repo = TS3Facade(ts3_connection_mock)
 
-        result = repo.channel_find("test123")
+        result = repo.channel_find_first("test123")
 
         ts3_connection_mock.ts3exec.assert_called_once()  # TODO: we can not check for the parameters because it is a lambda
         self.assertIsNone(result)
@@ -70,7 +70,7 @@ class TS3FacadeTest(TestCase):
         repo = TS3Facade(ts3_connection_mock)
 
         with self.assertRaises(RuntimeError):
-            repo.channel_find("test123")
+            repo.channel_find_first("test123")
         ts3_connection_mock.ts3exec.assert_called_once()  # TODO: we can not check for the parameters because it is a lambda
 
     def test_find_channel_calls_ts3exec_other_error_reraised(self):
@@ -83,6 +83,6 @@ class TS3FacadeTest(TestCase):
         repo = TS3Facade(ts3_connection_mock)
 
         with self.assertRaises(TS3QueryError):
-            repo.channel_find("test123")
+            repo.channel_find_first("test123")
 
         ts3_connection_mock.ts3exec.assert_called_once()  # TODO: we can not check for the parameters because it is a lambda

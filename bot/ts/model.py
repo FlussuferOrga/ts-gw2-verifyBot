@@ -1,11 +1,12 @@
 import logging
+from typing import Optional
 
 from bot.ts.ThreadSafeTSConnection import default_exception_handler
 
 LOG = logging.getLogger(__name__)
 
 
-class User():
+class User:
     """
     Class that interfaces the Teamspeak-API with user-specific calls more convenient.
     Since calls to the API are penalised, the class also tries to minimise those calls
@@ -90,5 +91,25 @@ class User():
 
 
 class Channel:
-    def __init__(self, channel_id):
-        self.channel_id = channel_id
+    def __init__(self, channel_id: int, channel_name: Optional[str] = None):
+        self._channel_id: int = channel_id
+        self._channel_name: Optional[str] = channel_name
+
+    @property
+    def id(self) -> int:
+        return self._channel_id
+
+    @property
+    def channel_id(self) -> int:
+        return self._channel_id
+
+    @property
+    def name(self) -> Optional[str]:
+        return self._channel_name
+
+    @property
+    def channel_name(self) -> Optional[str]:
+        return self._channel_name
+
+    def __str__(self) -> str:
+        return "Channel[id=%s,name=%s]" % (self.id, self.name)

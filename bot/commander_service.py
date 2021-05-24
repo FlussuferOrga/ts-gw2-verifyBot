@@ -2,10 +2,9 @@ import logging
 import urllib.parse
 from typing import Dict, Optional
 
-from bot.config import Config
-from bot.ts.user import User
+from .config import Config
 from .connection_pool import ConnectionPool
-from .ts import TS3Facade
+from .ts import TS3Facade, User
 from .user_service import UserService
 from .util import strip_ts_channel_name_tags
 
@@ -54,7 +53,7 @@ class CommanderService:
                 user = User(ts_facade, ts_db_id=client_dbid)
                 channel = user.current_channel
                 lead_channel_id = ts_entry.get("cid")
-                if channel is not None and channel.channel_id == lead_channel_id:  # user not online or in channel
+                if channel is not None and channel.id == lead_channel_id:  # user not online or in channel
                     db_entry = self._user_service.get_user_database_entry(user.unique_id)
                     # user could have the group in a channel but not be in there atm
                     ac = {

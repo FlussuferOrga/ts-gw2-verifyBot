@@ -97,7 +97,7 @@ class EventLooper:
 
         found_channel = None
         while found_channel is None:
-            found_channel = self._ts_facade.channel_find(channel_name)
+            found_channel = self._ts_facade.channel_find_first(channel_name)
             if found_channel is None:
                 LOG.warning("Unable to locate channel with name '%s'. Sleeping for 10 seconds...", channel_name)
                 time.sleep(10)

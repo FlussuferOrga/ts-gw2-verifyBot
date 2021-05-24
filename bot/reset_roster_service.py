@@ -38,7 +38,7 @@ class ResetRosterService:
 
     @staticmethod
     def _rename_channel_if_exists(facade, channel_name_pattern, new_channel_name):
-        channel = facade.channel_find(channel_name_pattern)
+        channel = facade.channel_find_first(channel_name_pattern)
         if channel is None:
             LOG.warning("No channel found with pattern '%s'. Skipping.", channel_name_pattern)
         else:

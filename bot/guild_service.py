@@ -1,4 +1,6 @@
 import logging
+import re
+from typing import Optional
 
 import binascii
 
@@ -64,7 +66,7 @@ class GuildService:
         if group_name is None:
             group_name = guild_tag
 
-        channel_name = self._build_channel_name(guild_info)
+        channel_name = self._build_channel_name(guild_info.get("name"), guild_info.get("tag"))
         channel_description = self._create_guild_channel_description(contacts, guild_id, guild_name, guild_tag)
 
         LOG.info("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'.", guild_name, guild_tag, group_name, ", ".join(contacts))
@@ -91,13 +93,13 @@ class GuildService:
                         LOG.debug("Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation.", group_name)
                         return DUPLICATE_DB_ENTRY
 
-                channel = ts_facade.channel_find(channel_name)
+                channel = ts_facade.channel_find_first(channel_name)
                 if channel is not None:
                     # channel already exists!
                     LOG.debug("Can not create a channel '%s', as it already exists. Aborting guild creation.", channel_name)
                     return DUPLICATE_TS_CHANNEL
 
-                parent = ts_facade.channel_find(self._config.guilds_parent_channel)
+                parent = ts_facade.channel_find_first(self._config.guilds_parent_channel)
                 if parent is None:
                     # parent channel does not exist!
                     LOG.debug("Can not find a parent-channel '%s' for guilds. Aborting guild creation.", self._config.guilds_parent_channel)
@@ -258,11 +260,8 @@ class GuildService:
                 _, _ = ts_facade.servergroup_add_permission(g.get("sgid"), "i_group_sort_id", sort_id)
 
     @staticmethod
-    def _build_channel_name(guild_info) -> str:
-        guild_name = guild_info.get("name")
-        guild_tag = guild_info.get("tag")
-        channel_name = "%s [%s]" % (guild_name, guild_tag)
-        return channel_name
+    def _build_channel_name(name: str, tag: str) -> str:
+        return "%s [%s]" % (name, tag)
 
     @staticmethod
     def _create_guild_channel_description(contacts, guild_id, name, tag):
@@ -294,22 +293,43 @@ class GuildService:
         if name is None:
             return INVALID_PARAMETERS
 
-        try:
-            guild_info = gw2api.guild_get(gw2api.guild_search(name))
-            if guild_info is None:
-                return INVALID_GUILD_NAME
-        except gw2api.ApiError as api_error:
-            LOG.info("Error querying api for guild '%s'", name, exc_info=api_error)
-            return INVALID_PARAMETERS
-
-        guild_name = guild_info.get("name")
+        guild_name: str = name
+        guild_tag: Optional[str] = None
+        guild_group_name: Optional[str] = None
 
         with self._database.lock:
-            g = self._database.cursor.execute("SELECT ts_group FROM guilds WHERE guild_name = ?", (guild_name,)).fetchone()
-            groupname = g[0] if g is not None else None
+            db_guild_entity = self._database.cursor.execute("SELECT ts_group,guild_name FROM guilds WHERE lower(guild_name) = lower(?)", (name,)).fetchone()
+            guild_group_name, guild_name = db_guild_entity if db_guild_entity is not None else [None, None]
 
-        if groupname is None:
+        if guild_group_name is None or guild_name is None:
             return NO_DB_ENTRY
+
+        with self.ts_connection_pool.item() as ts3_facade:
+            # CHANNEL
+            found_channels = ts3_facade.channel_find_all(guild_name)
+            if found_channels is None or len(found_channels) == 0:
+                LOG.debug("No channel found to delete.")
+            else:
+                regex = re.compile(r"^" + re.escape(guild_name) + "\s\[\w{1,4}\]$")
+                for channel in found_channels:
+                    if regex.fullmatch(channel.name) is not None:
+                        LOG.info("Deleting channel '%s' with id %s.", channel.channel_name, channel.id)
+                        ts3_facade.channel_delete(channel.id, force=True)
+                    else:
+                        LOG.debug("Channel %s does not match exaclty.", channel.name)
+
+            # GROUP
+            groups = ts3_facade.servergroup_list()
+            group = next((g for g in groups if g.get("name") == guild_group_name), None)
+            if group is None:
+                LOG.debug("No group '%s' to delete.", guild_group_name)
+            else:
+                LOG.debug("Deleting group '%s'.", guild_group_name)
+                ts3_facade.servergroup_delete(group.get("sgid"), force=True)
+
+            guild_icon_id = _generate_guild_icon_id(guild_name)
+
+            ts3_facade.remove_icon_if_exists(guild_icon_id)
 
         # FROM DB
         LOG.debug("Deleting guild '%s' from DB.", guild_name)
@@ -317,27 +337,4 @@ class GuildService:
             self._database.cursor.execute("DELETE FROM guilds WHERE guild_name = ?", (guild_name,))
             self._database.conn.commit()
 
-        with self.ts_connection_pool.item() as ts3_facade:
-            # CHANNEL
-            channel_name = self._build_channel_name(guild_info)
-            channel = ts3_facade.channel_find(channel_name)
-            if channel is None:
-                LOG.debug("No channel '%s' to delete.", channel_name)
-            else:
-                LOG.debug("Deleting channel '%s'.", channel_name)
-                ts3_facade.channel_delete(channel.channel_id, force=True)
-
-            # GROUP
-            groups = ts3_facade.servergroup_list()
-            group = next((g for g in groups if g.get("name") == groupname), None)
-            if group is None:
-                LOG.debug("No group '%s' to delete.", groupname)
-            else:
-                LOG.debug("Deleting group '%s'.", groupname)
-                ts3_facade.servergroup_delete(group.get("sgid"), force=True)
-
-            guild_icon_id = _generate_guild_icon_id(guild_name)
-
-            ts3_facade.remove_icon_if_exists(guild_icon_id)
-
-            return SUCCESS
+        return SUCCESS
