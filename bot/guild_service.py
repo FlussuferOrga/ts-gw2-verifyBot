@@ -194,16 +194,21 @@ class GuildService:
                 LOG.debug("Can not find a group for guild contacts. Skipping.")
             else:
                 for c in contacts:
+                    LOG.debug("Adding contact role to %s", c)
                     with self._database.lock:
                         accs = [row[0] for row in self._database.cursor.execute("SELECT ts_db_id FROM users WHERE lower(account_name) = lower(?)", (c,)).fetchall()]
                         for acc in accs:
                             try:
+                                LOG.debug("Adding contact role to %s Identity: %s", c, acc)
                                 user = User(ts_facade, unique_id=acc)
-                                ex = ts_facade.set_client_channelgroup(channel_id=cinfo.get("cid"), channelgroup_id=contactgroup.get("cgid"), client_db_id=user.ts_db_id)
-                                # while we are at it, add the contacts to the guild group as well
-                                ts_facade.servergroup_client_add(servergroup_id=guild_servergroup_id, client_db_id=user.ts_db_id)
+                                if user.ts_db_id is not None:
+                                    ex = ts_facade.set_client_channelgroup(channel_id=cinfo.get("cid"), channelgroup_id=contactgroup.get("cgid"), client_db_id=user.ts_db_id)
+                                    # while we are at it, add the contacts to the guild group as well
+                                    ts_facade.servergroup_client_add(servergroup_id=guild_servergroup_id, client_db_id=user.ts_db_id)
 
-                                errored = ex is not None
+                                    errored = ex is not None
+                                else:
+                                    LOG.warning("Could not add Role to Identity %s, not found on server", acc)
                             except Exception as ex:
                                 errored = ex
                             if errored:
