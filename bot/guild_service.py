@@ -1,6 +1,5 @@
 import logging
 import re
-from typing import Optional
 
 import binascii
 
@@ -286,16 +285,11 @@ class GuildService:
         name: name of the guild as in the game
         """
         SUCCESS = 0
-        INVALID_GUILD_NAME = 1
         NO_DB_ENTRY = 2
         INVALID_PARAMETERS = 5
 
         if name is None:
             return INVALID_PARAMETERS
-
-        guild_name: str = name
-        guild_tag: Optional[str] = None
-        guild_group_name: Optional[str] = None
 
         with self._database.lock:
             db_guild_entity = self._database.cursor.execute("SELECT ts_group,guild_name FROM guilds WHERE lower(guild_name) = lower(?)", (name,)).fetchone()
@@ -310,7 +304,7 @@ class GuildService:
             if found_channels is None or len(found_channels) == 0:
                 LOG.debug("No channel found to delete.")
             else:
-                regex = re.compile(r"^" + re.escape(guild_name) + "\s\[\w{1,4}\]$")
+                regex = re.compile(r"^" + re.escape(guild_name) + r"\s\[\w{1,4}\]$")
                 for channel in found_channels:
                     if regex.fullmatch(channel.name) is not None:
                         LOG.info("Deleting channel '%s' with id %s.", channel.channel_name, channel.id)
