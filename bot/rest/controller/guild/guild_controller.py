@@ -34,12 +34,12 @@ class GuildController(AbstractController):
 
             LOG.info("Received request to create guild %s (Group %s) with contacts %s", name, group_name, ", ".join(contacts))
 
-            res = self._service.create_guild(name, group_name, contacts)
+            code, res = self._service.create_guild(name, group_name, contacts)
 
-            if res == 0:
-                return jsonify("OK")
+            if code == 0:
+                return jsonify(res)
             else:
-                raise BadRequest(f"Operation was not successful. Response code: {res}")
+                return jsonify(res), 400
 
         @self.api.route("/guild", methods=["DELETE"])
         def _delete_guild():

@@ -1,6 +1,7 @@
 import logging
 import re
-from typing import Optional
+from dataclasses import dataclass
+from typing import Dict, Optional, Tuple
 
 import binascii
 
@@ -18,13 +19,28 @@ def _generate_guild_icon_id(name) -> int:
     return binascii.crc32(name.encode('utf8'))
 
 
+@dataclass
+class CreatedGuild:
+    name: str
+    channel_name: str
+    group_name: str
+    assigned_channel_groups: Optional[Dict[str, Dict[str, bool]]]
+
+
+@dataclass
+class CreateGuildResponse:
+    success: bool
+    message: str
+    created: Optional[CreatedGuild]
+
+
 class GuildService:
     def __init__(self, database: ThreadSafeDBConnection, ts_connection_pool: ConnectionPool[TS3Facade], config: Config):
         self._database = database
         self.ts_connection_pool = ts_connection_pool
         self._config = config
 
-    def create_guild(self, name, group_name, contacts):
+    def create_guild(self, name, group_name, contacts) -> Tuple[int, CreateGuildResponse]:
         """
         Creates a guild in the TS.
         - retrieves and uploads their emblem as icon
@@ -46,18 +62,23 @@ class GuildService:
         MISSING_PARENT_CHANNEL = 4
         INVALID_PARAMETERS = 5
 
+        response = CreateGuildResponse(success=False, created=None, message="")
+
         if name is None or len(name) < 4:
-            return INVALID_PARAMETERS
+            response.message = "Guild name is required and needs to be at least 4 characters long."
+            return INVALID_PARAMETERS, response
 
         if contacts is None or not isinstance(contacts, list):
-            return INVALID_PARAMETERS
+            # TODO response.message = "XXX"
+            return INVALID_PARAMETERS, response
 
         if group_name is not None and len(group_name) < 2:
-            return INVALID_PARAMETERS
+            # TODO response.message = "XXX"
+            return INVALID_PARAMETERS, response
 
         guild_info = gw2api.guild_get(gw2api.guild_search(name))
         if guild_info is None:
-            return INVALID_PARAMETERS
+            return INVALID_PARAMETERS, response
 
         guild_name = guild_info.get("name")
         guild_tag = guild_info.get("tag")
@@ -85,25 +106,28 @@ class GuildService:
                 if group is not None:
                     # group already exists!
                     LOG.debug("Can not create a group '%s', because it already exists. Aborting guild creation.", group)
-                    return DUPLICATE_TS_GROUP
+                    return DUPLICATE_TS_GROUP, response
 
                 with self._database.lock:
                     dbgroups = self._database.cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group = ?", (group_name,)).fetchall()
                     if len(dbgroups) > 0:
                         LOG.debug("Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation.", group_name)
-                        return DUPLICATE_DB_ENTRY
+                        response.message = "Can not create the guild because it already exists in the Database."
+                        return DUPLICATE_DB_ENTRY, response
 
                 channel = ts_facade.channel_find_first(channel_name)
                 if channel is not None:
                     # channel already exists!
                     LOG.debug("Can not create a channel '%s', as it already exists. Aborting guild creation.", channel_name)
-                    return DUPLICATE_TS_CHANNEL
+                    response.message = "Can not create the guild because a channel already exists."
+                    return DUPLICATE_TS_CHANNEL, response
 
                 parent = ts_facade.channel_find_first(self._config.guilds_parent_channel)
                 if parent is None:
                     # parent channel does not exist!
                     LOG.debug("Can not find a parent-channel '%s' for guilds. Aborting guild creation.", self._config.guilds_parent_channel)
-                    return MISSING_PARENT_CHANNEL
+                    response.message = "Can not create the guild because a the '%s' channel could not be found." % self._config.guilds_parent_channel
+                    return MISSING_PARENT_CHANNEL, response
 
                 LOG.debug("Checks complete.")
 
@@ -191,23 +215,29 @@ class GuildService:
             # ADD CONTACTS #
             ################
             LOG.debug("Adding contacts...")
+
+            assigned_channel_roles: Dict[str, Dict[str, bool]] = {}
+
             contactgroup = self._find_contact_group(ts_facade)
             if contactgroup is None:
                 LOG.debug("Can not find a group for guild contacts. Skipping.")
             else:
                 for c in contacts:
                     LOG.debug("Adding contact role to %s", c)
+                    assigned_channel_roles[c] = {}
                     with self._database.lock:
                         accs = [row[0] for row in self._database.cursor.execute("SELECT ts_db_id FROM users WHERE lower(account_name) = lower(?)", (c,)).fetchall()]
                         for acc in accs:
+                            assigned_channel_roles[c][acc] = False
                             try:
                                 LOG.debug("Adding contact role to %s Identity: %s", c, acc)
                                 user = User(ts_facade, unique_id=acc)
                                 if user.ts_db_id is not None:
                                     ex = ts_facade.set_client_channelgroup(channel_id=cinfo.get("cid"), channelgroup_id=contactgroup.get("cgid"), client_db_id=user.ts_db_id)
+                                    if ex is None:
+                                        assigned_channel_roles[c][acc] = True
                                     # while we are at it, add the contacts to the guild group as well
                                     ts_facade.servergroup_client_add(servergroup_id=guild_servergroup_id, client_db_id=user.ts_db_id)
-
                                     errored = ex is not None
                                 else:
                                     LOG.warning("Could not add Role to Identity %s, not found on server", acc)
@@ -217,7 +247,10 @@ class GuildService:
                                 LOG.error("Could not assign contact role '%s' to user '%s' with DB-unique-ID '%s' in "
                                           "guild channel for %s. Maybe the uid is not valid anymore.",
                                           self._config.guild_contact_channel_group, c, acc, guild_name, exc_info=ex)
-            return SUCCESS
+            response.created = CreatedGuild(name=guild_name, channel_name=channel_name, group_name=group_name, assigned_channel_groups=assigned_channel_roles)
+            response.success = True
+            response.message = "Successfully created"
+            return SUCCESS, response
 
     def _find_contact_group(self, ts_facade):
         cgroups, _ = ts_facade.channelgroup_list()
