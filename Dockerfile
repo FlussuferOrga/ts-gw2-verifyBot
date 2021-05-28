@@ -1,6 +1,11 @@
 FROM python:3-slim
 
-HEALTHCHECK --interval=2m --timeout=2s CMD curl -f http://localhost:10137/health || exit 1
+RUN apt-get update && \
+    apt-get -y --no-install-recommends install curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+HEALTHCHECK --interval=2m --timeout=5s CMD curl -f http://localhost:10137/health || exit 1
 
 # rest port
 EXPOSE 10137/tcp
@@ -9,7 +14,7 @@ WORKDIR /app
 CMD ["ts-gw2-verify-bot"]
 
 COPY . .
-RUN pip install --no-cache-dir .
+RUN pip install --use-feature=in-tree-build --no-cache-dir .
 
 #VOLUME /app/data
 #VOLUME /app/config

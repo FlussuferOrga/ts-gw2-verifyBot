@@ -90,11 +90,13 @@ class AuditService:
 
     def _audit_users(self):
         current_audit_date = datetime.date.today()  # Update current date everytime run
+        last_acceptable_audit_date = datetime.date.today() - datetime.timedelta(days=self._config.audit_period)
 
         with self._database_connection.lock:
-            db_audit_list = self._database_connection.cursor.execute('SELECT * FROM users').fetchall()
-        for audit_user in db_audit_list:
+            db_audit_list = self._database_connection.cursor.execute('SELECT * FROM users where last_audit_date == null or last_audit_date <= ?', (last_acceptable_audit_date,)).fetchall()
 
+        LOG.info("Queueing Audit for %s Users.", len(db_audit_list))
+        for audit_user in db_audit_list:
             # Convert to single variables
             audit_ts_id = audit_user[0]
             audit_account_name = audit_user[1]
@@ -102,23 +104,22 @@ class AuditService:
             # audit_created_date = audit_user[3]
             audit_last_audit_date = audit_user[4]
 
-            LOG.debug("Audit: User %s", audit_account_name)
-            LOG.debug("TODAY |%s|  NEXT AUDIT |%s|", current_audit_date, audit_last_audit_date + datetime.timedelta(days=self._config.audit_period))
+            LOG.debug("Queueing Audit: User: %s | TS Id: %s | Last Audit: %s", audit_account_name, audit_ts_id, audit_last_audit_date)
 
-            if current_audit_date >= audit_last_audit_date + datetime.timedelta(days=self._config.audit_period):  # compare audit date
-                with self._ts_connection_pool.item() as ts_connection:
-                    ts_uuid = ts_connection.client_db_id_from_uid(audit_ts_id)
-                if ts_uuid is None:
-                    LOG.info("User %s is not found in TS DB and could be deleted.", audit_account_name)
+            with self._ts_connection_pool.item() as ts_connection:
+                ts_uuid = ts_connection.client_db_id_from_uid(audit_ts_id)
+            if ts_uuid is None:
+                LOG.info("User %s is not found in TS DB and could be deleted.", audit_account_name)
+                with self._database_connection.lock:
                     self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", ((datetime.date.today()), audit_ts_id,))
-                    # self.removeUserFromDB(audit_ts_id)
-                else:
-                    LOG.info("User %s is due for auditing! Queueing", audit_account_name)
+                # self.removeUserFromDB(audit_ts_id)
+            else:
+                LOG.info("User %s is due for auditing! Queueing", audit_account_name)
+                with self._database_connection.lock:
                     self.queue_user_audit(QUEUE_PRIORITY_AUDIT, audit_account_name, audit_api_key, audit_ts_id)
 
         with self._database_connection.lock:
             self._database_connection.cursor.execute('INSERT INTO bot_info (last_succesful_audit) VALUES (?)', (current_audit_date,))
-            self._database_connection.conn.commit()
 
     def audit_user_on_join(self, client_unique_id):
         db_entry = self._user_service.get_user_database_entry(client_unique_id)
