@@ -83,7 +83,6 @@ class CommanderService:
         cid = lead_cid
         while cid is not None:
             channel_info, ex = ts_facade.channel_info(channel_id=cid)
-            LOG.error(ex)
             path.append(channel_info.get("channel_name"))
             if channel_info.get("pid") is None or channel_info.get('pid') == '0':
                 cid = None
