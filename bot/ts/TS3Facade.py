@@ -119,7 +119,7 @@ class TS3Facade:
     def use(self, server_id: int):
         self._ts3_connection.ts3exec_raise(lambda tc: tc.exec_("use", sid=server_id))
 
-    def whoami(self) -> Tuple[WhoamiResponse, Exception]:
+    def whoami(self) -> WhoamiResponse:
         return self._ts3_connection.ts3exec_raise(lambda ts_con: ts_con.query("whoami").first())
 
     def upload_icon(self, icon_id, icon_data):

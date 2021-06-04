@@ -16,10 +16,14 @@ from .config import Config
 from .connection_pool import ConnectionPool
 from .user_service import UserService
 
+REGISTER_EVENTS = ["textchannel", "textprivate", "server"]
+
 LOG = logging.getLogger(__name__)
 
 
 class EventLooper:
+    _verify_channel: Optional[Channel]
+
     def __init__(self, database_connection: ThreadSafeDBConnection,
                  ts_connection_pool: ConnectionPool[TS3Facade],
                  config: Config,
@@ -35,22 +39,33 @@ class EventLooper:
 
         self._ts_facade: Optional[TS3Facade] = None
         self._own_client_id = None
+        self._verify_channel = None
 
     def start(self):
-        with self._lock:  # prevent concurrency
-            with self._ts_connection_pool.item() as ts_facade:
-                self._ts_facade = ts_facade
+        while True:
+            with self._lock:  # prevent concurrency
+                with self._ts_connection_pool.item() as ts_facade:
+                    self._ts_facade = ts_facade
 
-                self._set_up_connection()
+                    # Forces script to loop forever while we wait for events to come in, unless connection timed out or exception occurs.
+                    # Then it should loop a new bot into creation.
+                    LOG.info("BOT now idle, waiting for requests.")
 
-                # Forces script to loop forever while we wait for events to come in, unless connection timed out or exception occurs.
-                # Then it should loop a new bot into creation.
-                LOG.info("BOT now idle, waiting for requests.")
-
-                self._loop_for_events()
+                    self._loop_for_events()
 
     def _loop_for_events(self):
+        self._set_up_connection()
+        last_check = datetime.datetime.now()
+
         while self._ts_facade is not None and self._ts_facade.is_healthy():
+
+            # periodically reconfigure the connection (if changes are necessary)
+            if last_check is None or (datetime.datetime.now() - last_check).seconds > 30:
+                change_detected = self._set_up_connection()
+                if change_detected:
+                    LOG.warning("Query Client has been reconfigured. This should not be necessary.")
+                last_check = datetime.datetime.now()
+
             response: TS3Event = self._ts_facade.wait_for_event(timeout=self._config.bot_sleep_idle)
             if response is not None:
                 event_type: str = response.event
@@ -62,16 +77,39 @@ class EventLooper:
         LOG.info("Listening Connection is not available anymore. Ending loop.")
 
     def _set_up_connection(self):
-        LOG.info("Setting up representative Connection: %s ...", self._ts_facade)
-        self._own_client_id = self._ts_facade.whoami().get('client_id')
-        self._ts_facade.force_rename(self._config.bot_nickname)
+        change = False
+
+        current_state = self._ts_facade.whoami()
+
+        if current_state['virtualserver_id'] != self._config.server_id:
+            LOG.info("Using server %s", self._config.server_id)
+            self._ts_facade.use(self._config.server_id)  # abort loop, resets loop
+            change = True
+
+        self._own_client_id = current_state.get('client_id')
+        if current_state['client_nickname'] != self._config.bot_nickname:
+            LOG.info("Renaming myself to  %s", self._config.bot_nickname)
+            self._ts_facade.force_rename(self._config.bot_nickname)
+            change = True
+
         # Find the verify channel
-        verify_channel = self._find_verify_channel()
+        if self._verify_channel is None:
+            self._verify_channel = self._find_verify_channel()
+            LOG.info("Detected channel %s", self._verify_channel)
+            change = True
+
         # Move ourselves to the Verify channel
-        self._move_to_channel(verify_channel, self._own_client_id)
-        # register for text events
-        self._ts_facade.server_notify_register(["textchannel", "textprivate", "server"])
-        LOG.info("Set up representative Connection: %s", self._ts_facade)
+        if current_state['client_channel_id'] != self._verify_channel.id:
+            LOG.info("Moving myself to %s", self._verify_channel)
+            self._move_to_channel(self._verify_channel, self._own_client_id)
+            change = True
+
+        if change:  # any of the above parameters changes, re-registering for events
+            LOG.info("Registering for events: %s", REGISTER_EVENTS)
+            # register for text events
+            self._ts_facade.server_notify_register(REGISTER_EVENTS)
+
+        return change
 
     def _handle_event(self, event_data, event_type):
         if event_type == 'notifytextmessage':  # text message

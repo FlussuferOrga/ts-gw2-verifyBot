@@ -51,6 +51,7 @@ def initialize_logging(file: Optional[str] = None, level: Union[str, int] = logg
 
     # SSH Log is very verbose on DEBUG
     logging.getLogger("paramiko.transport").setLevel(logging.INFO)
+    logging.getLogger("ts3.query").setLevel(logging.INFO)
 
 
 # from coloredlogs.install()
