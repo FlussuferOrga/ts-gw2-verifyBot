@@ -1,11 +1,11 @@
 #!/usr/bin/python
 import logging
+import time  # time for sleep function
 from argparse import Namespace
 from typing import Tuple
 
 import configargparse
 import schedule
-import time  # time for sleep function
 import ts3
 
 from bot import Bot
@@ -62,11 +62,14 @@ def _continuous_loop(config, database, ts_connection_pool):
     while bot_loop_forever:
         try:
             LOG.info("Connecting to Teamspeak server...")
-            bot_instance = Bot(database, ts_connection_pool, config)
 
-            http_server = create_http_server(bot_instance, port=config.ipc_port)
-            audit_job = None
+            bot_instance = None
+            audit_trigger_job = None
+            http_server = None
             try:
+                bot_instance = Bot(database, ts_connection_pool, config)
+                http_server = create_http_server(bot_instance, port=config.ipc_port)
+
                 http_server.start()
 
                 LOG.info("BOT Database Audit policies initiating.")
@@ -75,12 +78,15 @@ def _continuous_loop(config, database, ts_connection_pool):
                 bot_instance.trigger_user_audit()
 
                 # Set audit schedule job to run in X days
-                audit_job = schedule.every(config.audit_interval).days.at("06:00").do(bot_instance.trigger_user_audit)
+                audit_trigger_job = schedule.every(config.audit_interval).days.at("06:00").do(bot_instance.trigger_user_audit)
 
                 bot_instance.listen_for_events()
             finally:
-                if audit_job is not None:
-                    schedule.cancel_job(audit_job)
+                if bot_instance is not None:
+                    bot_instance.close()
+
+                if audit_trigger_job is not None:
+                    schedule.cancel_job(audit_trigger_job)
 
                 if http_server is not None:
                     LOG.info("Stopping Http Server")

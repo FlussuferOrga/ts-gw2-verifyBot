@@ -3,9 +3,9 @@ import logging
 import re
 import sqlite3
 import threading
+import time
 from typing import Optional
 
-import time
 from ts3.response import TS3Event
 
 from bot.db import ThreadSafeDBConnection
@@ -40,9 +40,10 @@ class EventLooper:
         self._ts_facade: Optional[TS3Facade] = None
         self._own_client_id = None
         self._verify_channel = None
+        self.closed = False
 
     def start(self):
-        while True:
+        while not self.closed:
             with self._lock:  # prevent concurrency
                 with self._ts_connection_pool.item() as ts_facade:
                     self._ts_facade = ts_facade
@@ -57,7 +58,7 @@ class EventLooper:
         self._set_up_connection()
         last_check = datetime.datetime.now()
 
-        while self._ts_facade is not None and self._ts_facade.is_healthy():
+        while not self.closed and self._ts_facade is not None and self._ts_facade.is_healthy():
 
             # periodically reconfigure the connection (if changes are necessary)
             if last_check is None or (datetime.datetime.now() - last_check).seconds > 30:
@@ -290,3 +291,7 @@ class EventLooper:
                 toks = command_string.split()  # no argument for split() splits on arbitrary whitespace
                 return toks[0], toks[1:]
         return None, None
+
+    def close(self):
+        self.closed = True
+        pass

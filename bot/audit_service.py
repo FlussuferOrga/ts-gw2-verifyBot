@@ -5,7 +5,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import date
-from queue import PriorityQueue
+from queue import Empty, PriorityQueue
 
 from bot.TS3Auth import AuthRequest, AuthorizationNotPossibleError
 from bot.config import Config
@@ -13,6 +13,7 @@ from bot.connection_pool import ConnectionPool
 from bot.db import ThreadSafeDBConnection
 from bot.ts import TS3Facade, User
 from .user_service import UserService
+from .util import ClosableLoopingThread
 
 LOG = logging.getLogger(__name__)
 
@@ -49,23 +50,26 @@ class AuditService:
         queue = self._audit_queue
 
         def worker():
-            LOG.info("Audit Worker is ready and pulling audit jobs")
-            while True:
-                item = None
-                try:
-                    item = queue.get()
-                    LOG.debug('Working on %s (%s):', item.account_name, item.client_unique_id)
-                    self.audit_user(item.account_name, item.api_key, item.client_unique_id)
-                except BaseException as ex:  # any error that occurs
-                    LOG.error("Exception during Audit Queue processing of item: %s.", item, exc_info=ex)
-                else:
-                    LOG.debug('Finished %s', item.account_name)
-                finally:
-                    queue.task_done()  # finish job anyways
-                    LOG.info("Remaining Queue Size: %s", queue.qsize())
+            item = None
+            try:
+                item = queue.get(timeout=5)
+                LOG.debug('Working on %s (%s):', item.account_name, item.client_unique_id)
+                self.audit_user(item.account_name, item.api_key, item.client_unique_id)
+            except Empty:
+                return  # empty
+            except BaseException as ex:  # any error that occurs
+                LOG.error("Exception during Audit Queue processing of item: %s.", item, exc_info=ex)
+                queue.task_done()  # finish job anyways
+                LOG.info("Remaining Queue Size: %s", queue.qsize())
+            else:
+                LOG.debug('Finished %s', item.account_name)
+                queue.task_done()
+                LOG.info("Remaining Queue Size: %s", queue.qsize())
 
         # start worker - in theory there could be more than one thread, but this will cause stress on the gw2-api, database and teamspeak
-        threading.Thread(name="AuditQueueWorker", target=worker, daemon=True).start()
+        self.audit_thread = ClosableLoopingThread(name="AuditQueueWorker", work=worker)
+        self.audit_thread.start()
+        LOG.info("Audit Worker is started and pulling audit jobs")
 
     def audit_user(self, account_name, api_key, client_unique_id):
         try:
@@ -127,3 +131,7 @@ class AuditService:
             account_name = db_entry["account_name"]
             api_key = db_entry["api_key"]
             self.queue_user_audit(QUEUE_PRIORITY_JOIN, account_name=account_name, api_key=api_key, client_unique_id=client_unique_id)
+
+    def close(self):
+        self.audit_thread.close()
+        pass

@@ -43,13 +43,13 @@ class HTTPServer(Flask):
             else:
                 self._server.run()
 
-        thread = threading.Thread(target=serve, kwargs={"app": self, "port": self.port})
-        thread.daemon = True
-        return thread
+        return threading.Thread(target=serve, kwargs={"app": self, "port": self.port}, daemon=True)
 
     def stop(self):
         LOG.debug("Stopping HTTP Server...")
         if self._server is not None:
             self._server.close()
-            LOG.debug("Waiting for HTTP Server Thread to terminate...")
-            self._thread.join()
+            self._server.task_dispatcher.shutdown(cancel_pending=True, timeout=5)
+
+        LOG.debug("Waiting for HTTP Server Thread to terminate...")
+        self._thread.join()

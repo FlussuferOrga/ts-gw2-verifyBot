@@ -16,7 +16,6 @@ LOG = logging.getLogger(__name__)
 
 
 class Bot:
-
     def __init__(self, database: ThreadSafeDBConnection,
                  ts_connection_pool: ConnectionPool[TS3Facade],
                  config: Config):
@@ -30,10 +29,15 @@ class Bot:
         self.commander_service = CommanderService(self._ts_connection_pool, self.user_service, config)
         self.reset_roster_service = ResetRosterService(self._ts_connection_pool, config)
 
+        self.active_loop = EventLooper(self._database_connection, self._ts_connection_pool, self._config, self.user_service, self.audit_service)
+
     def listen_for_events(self):
-        active_loop = EventLooper(self._database_connection, self._ts_connection_pool, self._config, self.user_service, self.audit_service)
-        active_loop.start()
-        del active_loop
+        self.active_loop.start()
 
     def trigger_user_audit(self):
         self.audit_service.trigger_user_audit()
+
+    def close(self):
+        self.active_loop.close()
+        self.audit_service.close()
+        pass
