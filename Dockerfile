@@ -1,7 +1,7 @@
 FROM python:3-slim
 
 RUN apt-get update && \
-    apt-get -y --no-install-recommends install curl && \
+    apt-get -y --no-install-recommends install curl libcap2 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

@@ -21,3 +21,6 @@ def enhance_thread_names():
 
             threading.Thread._bootstrap_original = threading.Thread._bootstrap
             threading.Thread._bootstrap = _name_hack
+
+            # set thread name for main thread
+            libcap.prctl(15, threading.current_thread().name.encode())

@@ -20,6 +20,7 @@ class HTTPServer(Flask):
         self.bot = bot
         self.port = port
         self._thread = self._create_thread()
+        self._thread.setName("Webserver")
         self._server = None
 
     def start(self):
