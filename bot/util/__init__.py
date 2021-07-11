@@ -12,6 +12,6 @@ __all__ = [
     'initialize_logging',
     'RepeatTimer',
     'enhance_thread_names',
-    'thread_dump'
+    'thread_dump',
     'ClosableLoopingThread'
 ]
