@@ -20,6 +20,33 @@ paths:
               schema:
                 type: string
                 example: "OK"
+  /health/thread-dump:
+    get:
+      summary: List Stacktraces for threads
+      operationId: healthStacktraces
+      tags:
+        - meta
+      responses:
+        default:
+          $ref: '#/components/responses/genericErrorResponse'
+        200:
+          description: Thread Dump
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # Thread: waitress-1(5428)
+                  File: "C:\Python38\lib\threading.py", line 890, in _bootstrap
+                   self._bootstrap_inner()
+                  File: "C:\Python38\lib\threading.py", line 932, in _bootstrap_inner
+                   self.run()
+                  File: "C:\Python38\lib\threading.py", line 870, in run
+                   self._target(*self._args, **self._kwargs)
+                  File: "C:\app\verifyBot\venv\lib\site-packages\waitress\task.py", line 72, in handler_thread
+                   self.queue_cv.wait()
+                  File: "C:\Python38\lib\threading.py", line 302, in wait
+                   waiter.acquire()
   /registration:
     delete:
       summary: delete a registration for an account

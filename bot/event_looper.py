@@ -3,9 +3,9 @@ import logging
 import re
 import sqlite3
 import threading
-import time
 from typing import Optional
 
+import time
 from ts3.response import TS3Event
 
 from bot.db import ThreadSafeDBConnection
@@ -125,7 +125,7 @@ class EventLooper:
             LOG.warning("Unhandled Event: %s", event_type)
 
     def _move_to_channel(self, channel: Channel, client_id):
-        chnl_err = self._ts_facade.client_move(client_id=client_id, channel_id=channel.channel_id)
+        chnl_err = self._ts_facade.client_move(client_id=client_id, channel_id=str(channel.channel_id))
         if chnl_err:
             LOG.warning("BOT Attempted to join channel '%s' (%s): %s", channel.channel_name, channel.channel_id, chnl_err.resp.error["msg"])
         else:

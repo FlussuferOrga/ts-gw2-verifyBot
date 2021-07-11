@@ -4,6 +4,7 @@ from typing import Optional, Union
 
 import waitress  # productive serve
 from flask import Flask
+from waitress import wasyncore
 from waitress.server import BaseWSGIServer, MultiSocketServer
 
 LOG = logging.getLogger(__name__)
@@ -19,9 +20,12 @@ class HTTPServer(Flask):
                          template_folder="dist/templates")
         self.bot = bot
         self.port = port
+
+        self._server = None
+        self._map = dict()
+
         self._thread = self._create_thread()
         self._thread.setName("Webserver")
-        self._server = None
 
     def start(self):
         LOG.debug("Starting HTTP Server...")
@@ -29,6 +33,8 @@ class HTTPServer(Flask):
         self._thread.start()
 
     def _create_thread(self):
+        self__map = self._map
+
         def serve(app, **kw):
             _quiet = kw.pop("_quiet", False)  # test shim
             _profile = kw.pop("_profile", False)  # test shim
@@ -43,13 +49,13 @@ class HTTPServer(Flask):
             else:
                 self._server.run()
 
-        return threading.Thread(target=serve, kwargs={"app": self, "port": self.port}, daemon=True)
+        return threading.Thread(target=serve, kwargs={"app": self, "port": self.port, "map": self__map}, daemon=True)
 
     def stop(self):
         LOG.debug("Stopping HTTP Server...")
         if self._server is not None:
             self._server.close()
-            self._server.task_dispatcher.shutdown(cancel_pending=True, timeout=5)
+            wasyncore.close_all(self._map)
 
         LOG.debug("Waiting for HTTP Server Thread to terminate...")
         self._thread.join()
