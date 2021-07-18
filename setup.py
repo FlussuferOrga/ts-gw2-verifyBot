@@ -26,6 +26,10 @@ if __name__ == '__main__':
                 'ts-gw2-verify-bot = bot.__main__:startup'
             ]
         },
+        include_package_data=True,
+        package_data={
+            'bot.rest': ['dist/**/*'],
+        },
         install_requires=read_requirements(),
         extras_require={'dev': (read_requirements("dev.requirements.txt"))}
     )
