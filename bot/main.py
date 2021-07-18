@@ -1,11 +1,11 @@
 #!/usr/bin/python
 import logging
-import time  # time for sleep function
 from argparse import Namespace
 from typing import Tuple
 
 import configargparse
 import schedule
+import time  # time for sleep function
 import ts3
 
 from bot import Bot
@@ -24,7 +24,7 @@ def main(args: Namespace):  #
 
     config = Config(args.config_path)
 
-    # setup ressoruces
+    # setup resources
     database = get_or_create_database(config.db_file_name, config.current_version)
     ts_connection_pool: ConnectionPool[TS3Facade] = create_connection_pool(config)
 
@@ -103,9 +103,15 @@ def _continuous_loop(config, database, ts_connection_pool):
 
 
 def create_connection_pool(config):
+    def _test_connection(obj: TS3Facade):
+        if not obj.is_healthy():
+            return False
+        whoami_response = obj.whoami()
+        return whoami_response['virtualserver_id'] == config.server_id
+
     return ConnectionPool(create=lambda: TS3Facade(create_connection(config, config.bot_nickname)),
                           destroy_function=lambda obj: obj.close(),
-                          test_function=lambda obj: obj.is_healthy(),
+                          test_function=_test_connection,
                           max_size=config.pool_size,
                           max_usage=config.pool_max_usage, idle=config.pool_tti, ttl=config.pool_ttl)
 

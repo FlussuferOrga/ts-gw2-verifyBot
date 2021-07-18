@@ -92,6 +92,7 @@ class ConnectionPool(Generic[_T]):
     def __init__(self,
                  create: Callable[[], _T],
                  destroy_function: Callable[[_T], None] = None,
+                 checkout_function: Callable[[_T], None] = None,
                  test_function: Callable[[_T], bool] = None,
                  max_size: int = 10, max_usage: int = 0,
                  ttl: int = 0, idle: int = 60,
@@ -112,6 +113,7 @@ class ConnectionPool(Generic[_T]):
 
         self._create = create
         self._destroy_function = destroy_function
+        self._checkout_function = checkout_function
         self._test_function = test_function
         self._max_size = int(max_size)
         self._max_usage = int(max_usage)
@@ -163,6 +165,8 @@ class ConnectionPool(Generic[_T]):
         finally:
             self._lock.release()
 
+        if self._checkout_function:
+            self._checkout_function(wrapped.connection)
         return wrapped.using()
 
     def release(self, conn):

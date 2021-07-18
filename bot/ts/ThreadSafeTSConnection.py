@@ -7,6 +7,7 @@ import ts3
 from ts3.query import TS3ServerConnection, TS3TransportError
 
 from bot.config import Config
+from bot.ts.ts3_extensions import ExtendedTS3ServerConnection
 
 LOG = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ class ThreadSafeTSConnection:
 
         self._bot_nickname = (bot_nickname + '-' + str(id(self)))[:30]
         self.lock = RLock()
-        self.ts_connection = None  # done in init()
+        self._ts_connection = None  # done in init()
         self._keepalive_job = None
         self._init()
 
@@ -75,18 +76,18 @@ class ThreadSafeTSConnection:
 
     def _init(self):
         with self.lock:  # lock for good measure
-            if self.ts_connection is not None:
+            if self._ts_connection is not None:
                 pass
 
             tp_args = dict()
             if self._protocol == "ssh" and self._known_hosts_file is not None:
                 tp_args["host_key"] = self._known_hosts_file
 
-            self.ts_connection = ts3.query.TS3ServerConnection(self.uri, tp_args=tp_args)
+            self._ts_connection = ExtendedTS3ServerConnection(self.uri, tp_args=tp_args)
 
             # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
-            self.ts_connection.COMMAND_SET = set(self.ts_connection.COMMAND_SET)  # creat copy of frozenset
-            self.ts_connection.COMMAND_SET.add('quit')  # add command
+            self._ts_connection.COMMAND_SET = set(self._ts_connection.COMMAND_SET)  # creat copy of frozenset
+            self._ts_connection.COMMAND_SET.add('quit')  # add command
 
             if self._keepalive_interval is not None:
                 self._keepalive_job = schedule.every(self._keepalive_interval).seconds.do(self.keepalive)
@@ -132,9 +133,7 @@ class ThreadSafeTSConnection:
     def ts3exec_raise(self, handler: Callable[[TS3ServerConnection], R]) -> R:
         return self.ts3exec(handler, raise_exception_handler)[0]
 
-    def ts3exec(self,
-                handler: Callable[[TS3ServerConnection], R],
-                exception_handler=default_exception_handler) -> Tuple[R, Exception]:  # eh = lambda ex: print(ex)):
+    def ts3exec(self, handler: Callable[[TS3ServerConnection], R], exception_handler=default_exception_handler) -> Tuple[R, Exception]:  # eh = lambda ex: print(ex)):
         """
         Excecutes a query() or exec_() on the internal TS3 connection.
         handler: a function ts3.query.TS3ServerConnection -> any
@@ -168,7 +167,7 @@ class ThreadSafeTSConnection:
             while failed and fails < ThreadSafeTSConnection.RETRIES:
                 failed = False
                 try:
-                    res = handler(self.ts_connection)
+                    res = handler(self._ts_connection)
                 # except ts3.query.TS3TransportError as ts3tex:
                 #     failed = True
                 #     fails += 1
@@ -182,24 +181,24 @@ class ThreadSafeTSConnection:
                     exres = exception_handler(ex)
         return res, exres
 
-    def close(self):
+    def close(self, timeout=5):
         with self.lock:
             LOG.info("Closing %s", self)
             if self._keepalive_job is not None:
                 schedule.cancel_job(self._keepalive_job)
 
             # This hack allows using the "quit" command, so the bot does not appear as "timed out" in the Ts3 Client & Server log
-            if self.ts_connection is not None and hasattr(self.ts_connection, "is_connected"):
+            if self._ts_connection is not None and hasattr(self._ts_connection, "is_connected"):
                 try:
                     if self.is_healthy():
-                        quit_query = self.ts_connection.query("quit")
-                        self.ts_connection.exec_query(query=quit_query, timeout=2)  # immediately quit
+                        quit_query = self._ts_connection.query("quit")
+                        self._ts_connection.exec_query(query=quit_query, timeout=timeout)  # immediately quit
                 except (ts3.query.TS3TimeoutError, ts3.query.TS3TransportError):
                     pass
                 except Exception as ex:
                     LOG.debug("Exception during closing the connection. This is usually not a problem.", exc_info=ex)
                 finally:
-                    self.ts_connection = None
+                    self._ts_connection = None
 
     def _gentle_rename(self, nickname):
         """
@@ -222,7 +221,7 @@ class ThreadSafeTSConnection:
         If the chosen nickname is already taken, the bot will attempt to kick that user.
         If that fails the bot will fall back to gentle renaming itself.
         """
-        whoami_response, _ = self.ts3exec(lambda tc: tc.query("whoami").first())
+        whoami_response, _ = self.ts3exec(lambda tc: tc.query("whoami").timeout(3).first())
         imposter, error = self.ts3exec(lambda tc: tc.query("clientfind", pattern=target_nickname).first(), signal_exception_handler)  # check if nickname is already in use
 
         if whoami_response['client_nickname'] != target_nickname:

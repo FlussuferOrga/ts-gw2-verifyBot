@@ -19,14 +19,11 @@ class TS3Facade:
     def __init__(self, ts3_connection: ThreadSafeTSConnection):
         self._ts3_connection = ts3_connection
 
-    def close(self):
-        self._ts3_connection.close()
-
     def __str__(self):
         return f"TS3Facade[{self._ts3_connection}]"
 
-    def is_connected(self):
-        return self._ts3_connection.is_connected()
+    def close(self, timeout=5):
+        self._ts3_connection.close(timeout)
 
     def is_healthy(self):
         return self._ts3_connection.is_healthy()
@@ -116,11 +113,11 @@ class TS3Facade:
     def channel_list(self) -> List[ChannelListDetail]:
         return self._ts3_connection.ts3exec_raise(lambda tc: tc.query("channellist").all())
 
-    def use(self, server_id: int):
-        self._ts3_connection.ts3exec_raise(lambda tc: tc.exec_("use", sid=server_id))
+    def use(self, server_id: int, timeout=5):
+        self._ts3_connection.ts3exec_raise(lambda tc: tc.query("use", sid=server_id).timeout(timeout=timeout).fetch())
 
-    def whoami(self) -> WhoamiResponse:
-        return self._ts3_connection.ts3exec_raise(lambda ts_con: ts_con.query("whoami").first())
+    def whoami(self, timeout=5) -> WhoamiResponse:
+        return self._ts3_connection.ts3exec_raise(lambda ts_con: ts_con.query("whoami").timeout(timeout).first())
 
     def upload_icon(self, icon_id, icon_data):
         def _ts_file_upload_hook(ts3_response: ts3.response.TS3QueryResponse):
@@ -131,26 +128,29 @@ class TS3Facade:
 
         icon_server_path = f"/icon_{icon_id}"
         icon_local_file_name = f"{icon_id}_icon.png"  # using name instead of tag, because tags are not unique
-        with open(icon_local_file_name, "w+b") as file_handle:
-            try:
-                file_handle.write(icon_data)
-                file_handle.flush()
-                file_handle.seek(0)
 
-                # it is important to have acquired the lock for the ts3conn globally
-                # at this point, as we directly pass the wrapped connection around
-                upload = TS3FileTransfer(self._ts3_connection.ts_connection)
-                _ = upload.init_upload(input_file=file_handle,
-                                       name=icon_server_path,
-                                       cid=0,  # 0 = Serverwide
-                                       query_resp_hook=_ts_file_upload_hook)
-                LOG.info("Icon %s uploaded as %s.", icon_local_file_name, icon_server_path)
-            except TS3Error as ts3error:
-                LOG.error("Error Uploading icon %s.", icon_local_file_name)
-                LOG.error(ts3error)
-            finally:
-                file_handle.close()
-                os.remove(icon_local_file_name)
+        def _upload(ts3con):
+            with open(icon_local_file_name, "w+b") as file_handle:
+                try:
+                    file_handle.write(icon_data)
+                    file_handle.flush()
+                    file_handle.seek(0)
+
+                    # it is important to have acquired the lock for the ts3conn globally
+                    # at this point, as we directly pass the wrapped connection around
+                    upload = TS3FileTransfer(ts3con)
+                    _ = upload.init_upload(input_file=file_handle,
+                                           name=icon_server_path,
+                                           cid=0,  # 0 = Serverwide
+                                           query_resp_hook=_ts_file_upload_hook)
+                    LOG.info("Icon %s uploaded as %s.", icon_local_file_name, icon_server_path)
+                except TS3Error as ts3error:
+                    LOG.error("Error Uploading icon %s.", icon_local_file_name, exc_info=ts3error)
+                finally:
+                    file_handle.close()
+                    os.remove(icon_local_file_name)
+
+        self._ts3_connection.ts3exec(_upload)
 
     def servergroup_add(self, servergroup_name: str):
         return self._ts3_connection.ts3exec(lambda tsc: tsc.query("servergroupadd", name=servergroup_name).first(), signal_exception_handler)
