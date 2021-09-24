@@ -265,16 +265,21 @@ class EventLooper:
                                 today_date = datetime.date.today()
 
                                 # Add user to database so we can query their API key over time to ensure they are still on our server
-                                self._user_service.add_user_to_database(rec_from_uid, auth.name, uapi, today_date,today_date)
-                                self._user_service.update_guild_tags(self._ts_facade,User(self._ts_facade, unique_id=rec_from_uid),auth)
+                                self._user_service.add_user_to_database(rec_from_uid, auth.name, uapi, today_date,
+                                                                        today_date)
+                                self._user_service.update_guild_tags(self._ts_facade,
+                                                                     User(self._ts_facade, unique_id=rec_from_uid),
+                                                                     auth)
                                 # self.updateGuildTags(rec_from_uid, auth)
                                 LOG.debug("Added user to DB with ID %s", rec_from_uid)
 
                                 # notify user they are verified
-                                self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_success"))
+                                self._ts_facade.send_text_message_to_client(rec_from_id,
+                                                                            self._config.locale.get("bot_msg_success"))
                             else:
                                 # client limit is set and hit
-                                self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get("bot_msg_limit_Hit"))
+                                self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get(
+                                    "bot_msg_limit_Hit"))
                                 LOG.info("Received API Auth from %s, but %s has reached the client limit.",
                                          rec_from_name,
                                          rec_from_name)

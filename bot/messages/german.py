@@ -87,4 +87,3 @@ class German(Locale):
         self.set("bot_pong_response", "Pong! Ich lebe noch!")
 
         self.set("bot_msg_verification_disabled", "Verifizierung is aktuell nicht aktiviert.")
-
