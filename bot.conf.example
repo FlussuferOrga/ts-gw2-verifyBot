@@ -6,6 +6,10 @@
 
 #######################################
 
+[features]
+enable_verification = True
+
+
 [teamspeak connection settings]
 
 # can be "telnet" or "ssh". Default is "telnet"

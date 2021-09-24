@@ -33,7 +33,8 @@ class CommanderService:
                             "Links will not be usable without a password")
 
         if len(cgroups) < 1:
-            LOG.info("Could not find any group of %s to determine commanders by. Disabling this feature.", str(self._commander_group_names))
+            LOG.info("Could not find any group of %s to determine commanders by. Disabling this feature.",
+                     str(self._commander_group_names))
             self._commander_groups = []
             return
 
@@ -54,13 +55,15 @@ class CommanderService:
                 channel = user.current_channel
                 lead_channel_id = ts_entry.get("cid")
                 if channel is not None and channel.id == lead_channel_id:  # user not online or in channel
-                    db_entry = self._user_service.get_user_database_entry(user.unique_id)
                     # user could have the group in a channel but not be in there atm
                     ac = {
-                        "account_name": db_entry["account_name"],
                         "ts_cluid": user.unique_id,
                         "ts_display_name": user.name
                     }
+                    db_entry = self._user_service.get_user_database_entry(user.unique_id)
+
+                    if db_entry is not None:
+                        ac["account_name"] = db_entry["account_name"]
 
                     ex, path = self.fetch_branch(lead_channel_id, ts_facade)
 
@@ -71,9 +74,11 @@ class CommanderService:
                     ac["ts_join_url"] = self._create_join_link(lead_channel_id)  # tree branch (reverse)
 
                     if ex is not None:
-                        LOG.warning("Could not determine information for commanding user with ID %s: '%s'. Skipping.", str(ts_entry), str(ex))
+                        LOG.warning("Could not determine information for commanding user with ID %s: '%s'. Skipping.",
+                                    str(ts_entry), str(ex))
                     else:
                         active_commanders.append(ac)
+
             return {"commanders": active_commanders}
 
     @staticmethod

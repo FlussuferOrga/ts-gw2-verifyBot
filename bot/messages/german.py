@@ -85,3 +85,6 @@ class German(Locale):
                  " Bitte stelle sicher, dass du die exakte Schreibweise der Gildengruppe hier im TeamSpeak verwendest.")
 
         self.set("bot_pong_response", "Pong! Ich lebe noch!")
+
+        self.set("bot_msg_verification_disabled", "Verifizierung is aktuell nicht aktiviert.")
+

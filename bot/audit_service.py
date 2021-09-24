@@ -32,7 +32,8 @@ class AuditQueueEntry:
 
 
 class AuditService:
-    def __init__(self, database_connection_pool: ThreadSafeDBConnection, ts_connection_pool: ConnectionPool[TS3Facade], config: Config, user_service: UserService):
+    def __init__(self, database_connection_pool: ThreadSafeDBConnection, ts_connection_pool: ConnectionPool[TS3Facade],
+                 config: Config, user_service: UserService):
         self._user_service = user_service
         self._database_connection = database_connection_pool
         self._ts_connection_pool = ts_connection_pool
@@ -42,7 +43,8 @@ class AuditService:
         self._start_audit_queue_worker()
 
     def queue_user_audit(self, priority: int, account_name: str, api_key: str, client_unique_id: str):
-        queue_entry = AuditQueueEntry(priority, account_name=account_name, api_key=api_key, client_unique_id=client_unique_id)
+        queue_entry = AuditQueueEntry(priority, account_name=account_name, api_key=api_key,
+                                      client_unique_id=client_unique_id)
         LOG.debug("Adding entry to audit queue for : %s", account_name)
         self._audit_queue.put(queue_entry)
 
@@ -79,7 +81,8 @@ class AuditService:
                 with self._ts_connection_pool.item() as ts_facade:
                     self._user_service.update_guild_tags(ts_facade, User(ts_facade, unique_id=client_unique_id), auth)
                 with self._database_connection.lock:
-                    self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", ((date.today()), client_unique_id,))
+                    self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?",
+                                                             ((date.today()), client_unique_id,))
                     self._database_connection.conn.commit()
             else:
                 LOG.info("User %s is no longer on our server. Removing access....", account_name)
@@ -93,11 +96,17 @@ class AuditService:
         threading.Thread(name="FullAudit", target=self._audit_users, daemon=True).start()
 
     def _audit_users(self):
+        if not self._config.enable_verification:
+            LOG.debug("Verification is disabled, skipping audit.")
+
+        return
         current_audit_date = datetime.date.today()  # Update current date everytime run
         last_acceptable_audit_date = datetime.date.today() - datetime.timedelta(days=self._config.audit_period)
 
         with self._database_connection.lock:
-            db_audit_list = self._database_connection.cursor.execute('SELECT * FROM users where last_audit_date == null or last_audit_date <= ?', (last_acceptable_audit_date,)).fetchall()
+            db_audit_list = self._database_connection.cursor.execute(
+                'SELECT * FROM users where last_audit_date == null or last_audit_date <= ?',
+                (last_acceptable_audit_date,)).fetchall()
 
         LOG.info("Queueing Audit for %s Users.", len(db_audit_list))
         for audit_user in db_audit_list:
@@ -108,14 +117,16 @@ class AuditService:
             # audit_created_date = audit_user[3]
             audit_last_audit_date = audit_user[4]
 
-            LOG.debug("Queueing Audit: User: %s | TS Id: %s | Last Audit: %s", audit_account_name, audit_ts_id, audit_last_audit_date)
+            LOG.debug("Queueing Audit: User: %s | TS Id: %s | Last Audit: %s", audit_account_name, audit_ts_id,
+                      audit_last_audit_date)
 
             with self._ts_connection_pool.item() as ts_connection:
                 ts_uuid = ts_connection.client_db_id_from_uid(audit_ts_id)
             if ts_uuid is None:
                 LOG.info("User %s is not found in TS DB and could be deleted.", audit_account_name)
                 with self._database_connection.lock:
-                    self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?", ((datetime.date.today()), audit_ts_id,))
+                    self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?",
+                                                             ((datetime.date.today()), audit_ts_id,))
                 # self.removeUserFromDB(audit_ts_id)
             else:
                 LOG.info("User %s is due for auditing! Queueing", audit_account_name)
@@ -123,14 +134,16 @@ class AuditService:
                     self.queue_user_audit(QUEUE_PRIORITY_AUDIT, audit_account_name, audit_api_key, audit_ts_id)
 
         with self._database_connection.lock:
-            self._database_connection.cursor.execute('INSERT INTO bot_info (last_succesful_audit) VALUES (?)', (current_audit_date,))
+            self._database_connection.cursor.execute('INSERT INTO bot_info (last_succesful_audit) VALUES (?)',
+                                                     (current_audit_date,))
 
     def audit_user_on_join(self, client_unique_id):
         db_entry = self._user_service.get_user_database_entry(client_unique_id)
         if db_entry is not None:
             account_name = db_entry["account_name"]
             api_key = db_entry["api_key"]
-            self.queue_user_audit(QUEUE_PRIORITY_JOIN, account_name=account_name, api_key=api_key, client_unique_id=client_unique_id)
+            self.queue_user_audit(QUEUE_PRIORITY_JOIN, account_name=account_name, api_key=api_key,
+                                  client_unique_id=client_unique_id)
 
     def close(self):
         self.audit_thread.close()
