@@ -6,5 +6,5 @@ flask-cors==3.0.10
 waitress==2.0.0
 GuildWars2-API-Client==0.5.9
 cachetools==4.2.4
-ConfigArgParse==1.5.2
+ConfigArgParse==1.5.3
 coloredlogs==15.0.1
