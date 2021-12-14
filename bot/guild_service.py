@@ -2,7 +2,7 @@ import binascii
 import datetime
 import logging
 import re
-from collections import Iterator
+from typing import Iterator
 
 import humanize
 
