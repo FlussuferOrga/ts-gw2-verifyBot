@@ -1,7 +1,7 @@
 import logging
 
 from flask import jsonify, request
-from werkzeug.exceptions import BadRequest
+from werkzeug.exceptions import BadRequest, HTTPException
 
 from bot import GuildService
 from bot.rest.controller.abstract_controller import AbstractController
@@ -32,7 +32,8 @@ class GuildController(AbstractController):
 
             self.validate_name(name)
 
-            LOG.info("Received request to create guild %s (Group %s) with contacts %s", name, group_name, ", ".join(contacts))
+            LOG.info("Received request to create guild %s (Group %s) with contacts %s", name, group_name,
+                     ", ".join(contacts))
 
             res = self._service.create_guild(name, group_name, contacts)
 
@@ -40,6 +41,18 @@ class GuildController(AbstractController):
                 return jsonify("OK")
             else:
                 raise BadRequest(f"Operation was not successful. Response code: {res}")
+
+        @self.api.route("/guild/channels", methods=["GET"])
+        def _guild_channels():
+            LOG.info("Received request list guilöd channels")
+
+            res = list(self._service.list_channels())
+            if res is not None and len(res) > 0:
+                return jsonify(res)
+            else:
+                http_exception = HTTPException()
+                http_exception.code = 204
+                raise http_exception
 
         @self.api.route("/guild", methods=["DELETE"])
         def _delete_guild():

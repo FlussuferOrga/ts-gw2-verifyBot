@@ -1,7 +1,10 @@
+import binascii
+import datetime
 import logging
 import re
+from collections import Iterator
 
-import binascii
+import humanize
 
 import bot.gwapi as gw2api
 from bot.config import Config
@@ -15,6 +18,18 @@ LOG = logging.getLogger(__name__)
 
 def _generate_guild_icon_id(name) -> int:
     return binascii.crc32(name.encode('utf8'))
+
+
+def formatSeconds(seconds):
+    empty_delta = datetime.timedelta(seconds=int(seconds))
+    s = humanize.naturaldelta(empty_delta)
+    return s
+
+
+def none_if_empty(param):
+    if param is not None and len(param) > 0:
+        return param
+    return None
 
 
 class GuildService:
@@ -68,7 +83,8 @@ class GuildService:
         channel_name = self._build_channel_name(guild_info.get("name"), guild_info.get("tag"))
         channel_description = self._create_guild_channel_description(contacts, guild_id, guild_name, guild_tag)
 
-        LOG.info("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'.", guild_name, guild_tag, group_name, ", ".join(contacts))
+        LOG.info("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'.", guild_name, guild_tag,
+                 group_name, ", ".join(contacts))
 
         with self.ts_connection_pool.item() as ts_facade:
             # lock for the whole block to avoid constant interference
@@ -87,21 +103,26 @@ class GuildService:
                     return DUPLICATE_TS_GROUP
 
                 with self._database.lock:
-                    dbgroups = self._database.cursor.execute("SELECT ts_group, guild_name FROM guilds WHERE ts_group = ?", (group_name,)).fetchall()
+                    dbgroups = self._database.cursor.execute(
+                        "SELECT ts_group, guild_name FROM guilds WHERE ts_group = ?", (group_name,)).fetchall()
                     if len(dbgroups) > 0:
-                        LOG.debug("Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation.", group_name)
+                        LOG.debug(
+                            "Can not create a DB entry for TS group '%s', as it already exists. Aborting guild creation.",
+                            group_name)
                         return DUPLICATE_DB_ENTRY
 
                 channel = ts_facade.channel_find_first(channel_name)
                 if channel is not None:
                     # channel already exists!
-                    LOG.debug("Can not create a channel '%s', as it already exists. Aborting guild creation.", channel_name)
+                    LOG.debug("Can not create a channel '%s', as it already exists. Aborting guild creation.",
+                              channel_name)
                     return DUPLICATE_TS_CHANNEL
 
                 parent = ts_facade.channel_find_first(self._config.guilds_parent_channel)
                 if parent is None:
                     # parent channel does not exist!
-                    LOG.debug("Can not find a parent-channel '%s' for guilds. Aborting guild creation.", self._config.guilds_parent_channel)
+                    LOG.debug("Can not find a parent-channel '%s' for guilds. Aborting guild creation.",
+                              self._config.guilds_parent_channel)
                     return MISSING_PARENT_CHANNEL
 
                 LOG.debug("Checks complete.")
@@ -117,11 +138,7 @@ class GuildService:
                 # CREATE CHANNEL AND SUBCHANNELS #
                 ##################################
                 LOG.debug("Creating guild channel ...")
-                channel_list = ts_facade.channel_list()
-
-                # assert channel and group both exist and parent channel is available
-                all_guild_channels = [c for c in channel_list if c.get("pid") == parent.channel_id]
-                all_guild_channels.sort(key=lambda c: c.get("channel_name"), reverse=True)
+                all_guild_channels = self._find_guild_channels(parent, ts_facade.channel_list())
 
                 # Assuming the channels are already in order on the server,
                 # find the first channel whose name is alphabetically smaller than the new channel name.
@@ -167,7 +184,8 @@ class GuildService:
             # must exist in DB before creating group to have it available when reordering groups.
             LOG.debug("Creating entry in database for auto assignment of guild group...")
             with self._database.lock:
-                self._database.cursor.execute("INSERT INTO guilds(ts_group, guild_name) VALUES(?,?)", (group_name, guild_name))
+                self._database.cursor.execute("INSERT INTO guilds(ts_group, guild_name) VALUES(?,?)",
+                                              (group_name, guild_name))
                 self._database.conn.commit()
 
             #######################
@@ -176,14 +194,16 @@ class GuildService:
             LOG.debug("Creating and configuring server group...")
             resp, ex = ts_facade.servergroup_add(group_name)
             if ex is not None and ex.resp.error["id"] == "1282":
-                LOG.warning("Duplication error while trying to create the group '%s' for the guild %s [%s].", group_name, guild_name, guild_tag)
+                LOG.warning("Duplication error while trying to create the group '%s' for the guild %s [%s].",
+                            group_name, guild_name, guild_tag)
 
             guild_servergroup_id = resp.get("sgid")
 
             servergroup_permissions = self._create_guild_servergroup_permissions(icon_id)
             ts_facade.servergroup_add_permissions(guild_servergroup_id, servergroup_permissions)
 
-            groups.append({"sgid": resp.get("sgid"), "name": group_name})  # the newly created group has to be added to properly iterate over the guild groups
+            groups.append({"sgid": resp.get("sgid"),
+                           "name": group_name})  # the newly created group has to be added to properly iterate over the guild groups
             self._sort_guild_groups_using_talk_power(groups, ts_facade)
 
             ################
@@ -197,15 +217,19 @@ class GuildService:
                 for c in contacts:
                     LOG.debug("Adding contact role to %s", c)
                     with self._database.lock:
-                        accs = [row[0] for row in self._database.cursor.execute("SELECT ts_db_id FROM users WHERE lower(account_name) = lower(?)", (c,)).fetchall()]
+                        accs = [row[0] for row in self._database.cursor.execute(
+                            "SELECT ts_db_id FROM users WHERE lower(account_name) = lower(?)", (c,)).fetchall()]
                         for acc in accs:
                             try:
                                 LOG.debug("Adding contact role to %s Identity: %s", c, acc)
                                 user = User(ts_facade, unique_id=acc)
                                 if user.ts_db_id is not None:
-                                    ex = ts_facade.set_client_channelgroup(channel_id=cinfo.get("cid"), channelgroup_id=contactgroup.get("cgid"), client_db_id=user.ts_db_id)
+                                    ex = ts_facade.set_client_channelgroup(channel_id=cinfo.get("cid"),
+                                                                           channelgroup_id=contactgroup.get("cgid"),
+                                                                           client_db_id=user.ts_db_id)
                                     # while we are at it, add the contacts to the guild group as well
-                                    ts_facade.servergroup_client_add(servergroup_id=guild_servergroup_id, client_db_id=user.ts_db_id)
+                                    ts_facade.servergroup_client_add(servergroup_id=guild_servergroup_id,
+                                                                     client_db_id=user.ts_db_id)
 
                                     errored = ex is not None
                                 else:
@@ -218,10 +242,18 @@ class GuildService:
                                           self._config.guild_contact_channel_group, c, acc, guild_name, exc_info=ex)
             return SUCCESS
 
+    def _find_guild_channels(self, parent, channel_list):
+        # assert channel and group both exist and parent channel is available
+        all_guild_channels = [c for c in channel_list if c.get("pid") == parent.channel_id]
+        all_guild_channels.sort(key=lambda c: c.get("channel_name"), reverse=True)
+        return all_guild_channels
+
     def _find_contact_group(self, ts_facade):
         cgroups, _ = ts_facade.channelgroup_list()
         # check type == 1 to filter out template groups
-        contactgroup = next((cg for cg in cgroups if cg.get("name") == self._config.guild_contact_channel_group and cg.get("type") == "1"), None)
+        contactgroup = next((cg for cg in cgroups if
+                             cg.get("name") == self._config.guild_contact_channel_group and cg.get("type") == "1"),
+                            None)
         return contactgroup
 
     def _create_guild_servergroup_permissions(self, icon_id):
@@ -239,12 +271,15 @@ class GuildService:
 
     def _sort_guild_groups_using_talk_power(self, groups, ts_facade):
         with self._database.lock:
-            guildgroups = [g[0] for g in self._database.cursor.execute("SELECT ts_group FROM guilds ORDER BY ts_group").fetchall()]
+            guildgroups = [g[0] for g in
+                           self._database.cursor.execute("SELECT ts_group FROM guilds ORDER BY ts_group").fetchall()]
         for i, guild_group in enumerate(guildgroups):
             g = next((g for g in groups if g.get("name") == guild_group), None)
             if g is None:
                 # error! Group deleted from TS, but not from DB!
-                LOG.warning("Found guild '%s' in the database, but no coresponding server group! Skipping this entry, but it should be fixed!", guildgroups[i])
+                LOG.warning(
+                    "Found guild '%s' in the database, but no coresponding server group! Skipping this entry, but it should be fixed!",
+                    guildgroups[i])
             else:
                 tp = self._config.guilds_maximum_talk_power - i
 
@@ -292,7 +327,8 @@ class GuildService:
             return INVALID_PARAMETERS
 
         with self._database.lock:
-            db_guild_entity = self._database.cursor.execute("SELECT ts_group,guild_name FROM guilds WHERE lower(guild_name) = lower(?)", (name,)).fetchone()
+            db_guild_entity = self._database.cursor.execute(
+                "SELECT ts_group,guild_name FROM guilds WHERE lower(guild_name) = lower(?)", (name,)).fetchone()
             guild_group_name, guild_name = db_guild_entity if db_guild_entity is not None else [None, None]
 
         if guild_group_name is None or guild_name is None:
@@ -332,3 +368,28 @@ class GuildService:
             self._database.conn.commit()
 
         return SUCCESS
+
+    def list_channels(self) -> Iterator[dict]:
+        with self.ts_connection_pool.item() as facade:
+            all_channels = facade.channel_list()
+            parent = facade.channel_find_first(self._config.guilds_parent_channel)
+
+            channels = self._find_guild_channels(parent, all_channels)
+
+        for channel in channels:
+            yield from self.grab_channel(all_channels, facade, channel)
+        pass
+
+    def grab_channel(self, all_channels, facade, sub1):
+        channel_id = int(sub1["cid"])
+        sub_info, ex = facade.channel_info(channel_id)
+        yield {
+            "name": sub1.get("channel_name"),
+            "empty_since": formatSeconds(sub_info.get("seconds_empty")),
+            "subChannels": none_if_empty(list(self.grab_sub_channels(all_channels, facade, sub1["cid"])))
+        }
+
+    def grab_sub_channels(self, all_channels, facade, parent_id):
+        sub_channels = [c for c in all_channels if c.get("pid") == parent_id]
+        for sub1 in sub_channels:
+            yield from self.grab_channel(all_channels, facade, sub1)
