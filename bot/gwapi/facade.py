@@ -1,8 +1,8 @@
 import logging
-from typing import List, Optional
 
 from cachetools import LRUCache, TTLCache, cached
 from gw2api import GuildWars2Client
+from typing import List, Optional
 
 from .account import Account
 from .character import Character
@@ -47,6 +47,8 @@ def _check_error(result):
         error_text = result["text"]
         LOG.info("Api returned error: %s", error_text)
         if error_text == "ErrTimeout":  # happens on login server down
+            raise ApiUnavailableError(error_text)
+        if error_text == "ErrInternal":
             raise ApiUnavailableError(error_text)
         if error_text == "invalid key" or error_text == "Invalid access token":  # when key is invalid or not a key at all
             raise ApiKeyInvalidError(error_text)
