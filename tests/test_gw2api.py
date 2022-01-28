@@ -1,6 +1,5 @@
-from unittest import TestCase
-
 import sys
+from unittest import TestCase
 
 import bot.gwapi as gw2api
 
@@ -49,8 +48,8 @@ class Gw2ApiFacadeTest(TestCase):
     def test_get_characters(self):
         characters = gw2api.characters_get(self.TEST_TOKEN)
         self.assertEqual(len(characters), 2)
-        self.assertListEqual(list(map(lambda x: x.get("level"), characters)), [23, 12])
-        self.assertListEqual(list(map(lambda x: x.get("name"), characters)), ["Eff Testing Warr", "Eff Testing Ele"])
+        self.assertSetEqual(set(map(lambda x: x.get("level"), characters)), {23, 12})
+        self.assertSetEqual(set(map(lambda x: x.get("name"), characters)), {"Eff Testing Warr", "Eff Testing Ele"})
 
     def test_get_worlds(self):
         worlds = gw2api.worlds_get_ids()
