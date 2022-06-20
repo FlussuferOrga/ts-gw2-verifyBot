@@ -1,5 +1,6 @@
 import logging
 import urllib.parse
+from enum import Enum
 from typing import Dict, Optional
 
 from .config import Config
@@ -9,6 +10,12 @@ from .user_service import UserService
 from .util import strip_ts_channel_name_tags
 
 LOG = logging.getLogger(__name__)
+
+
+class LeadType(str, Enum):
+    UNKNOWN = 'UNKNOWN'
+    PPT = 'PPT'
+    PPK = 'PPK'
 
 
 class CommanderService:
@@ -38,7 +45,21 @@ class CommanderService:
             self._commander_groups = []
             return
 
-        self._commander_groups = [c.get("cgid") for c in cgroups]
+        self._commander_groups = [
+            {
+                "cgid": c.get("cgid"),
+                "leadtype": CommanderService.extract_type(c.get("name"))
+            } for c in cgroups
+        ]
+
+    @staticmethod
+    def extract_type(group_name) -> LeadType:
+        if "PPK" in group_name:
+            return LeadType.PPK
+        elif "PPT" in group_name:
+            return LeadType.PPT
+        else:
+            return LeadType.UNKNOWN
 
     def get_active_commanders(self):
         if not self._commander_groups:
@@ -47,7 +68,7 @@ class CommanderService:
         active_commanders = []
 
         with self._ts_connection_pool.item() as ts_facade:
-            acs = ts_facade.channelgroup_client_list(self._commander_groups)
+            acs = ts_facade.channelgroup_client_list([g["cgid"] for g in self._commander_groups])
             LOG.info(acs)
             for ts_entry in acs:
                 client_dbid = ts_entry.get("cldbid")
@@ -60,6 +81,12 @@ class CommanderService:
                         "ts_cluid": user.unique_id,
                         "ts_display_name": user.name
                     }
+
+                    for e in self._commander_groups:
+                        if e["cgid"] == ts_entry.get("cgid"):
+                            ac["leadtype"] = e["leadtype"]
+                            break
+
                     db_entry = self._user_service.get_user_database_entry(user.unique_id)
 
                     if db_entry is not None:
