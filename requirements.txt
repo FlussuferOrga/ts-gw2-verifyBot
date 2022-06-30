@@ -8,4 +8,4 @@ GuildWars2-API-Client==0.5.9
 cachetools==5.2.0
 ConfigArgParse==1.5.3
 coloredlogs==15.0.1
-humanize==4.2.1
+humanize==4.2.3
