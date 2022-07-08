@@ -75,14 +75,15 @@ class AuditService:
 
     def audit_user(self, account_name, api_key, client_unique_id):
         try:
-            auth = AuthRequest(api_key, self._config.required_servers, int(self._config.required_level), account_name)
+            auth = AuthRequest(api_key, self._config.required_servers, int(self._config.required_level))
             if auth.success:
-                LOG.info("User %s is still on %s. Successful audit!", account_name, auth.world.get("name"))
+                LOG.info("User %s is still on %s. Successful audit!", auth.name, auth.world.get("name"))
                 with self._ts_connection_pool.item() as ts_facade:
                     self._user_service.update_guild_tags(ts_facade, User(ts_facade, unique_id=client_unique_id), auth)
                 with self._database_connection.lock:
-                    self._database_connection.cursor.execute("UPDATE users SET last_audit_date = ? WHERE ts_db_id= ?",
-                                                             ((date.today()), client_unique_id,))
+                    self._database_connection.cursor.execute(
+                        "UPDATE users SET last_audit_date = ?, account_name = ? WHERE ts_db_id= ?",
+                        ((date.today(), auth.name), client_unique_id,))
                     self._database_connection.conn.commit()
             else:
                 LOG.info("User %s is no longer on our server. Removing access....", account_name)
@@ -98,8 +99,8 @@ class AuditService:
     def _audit_users(self):
         if not self._config.enable_verification:
             LOG.debug("Verification is disabled, skipping audit.")
+            return
 
-        return
         current_audit_date = datetime.date.today()  # Update current date everytime run
         last_acceptable_audit_date = datetime.date.today() - datetime.timedelta(days=self._config.audit_period)
 
