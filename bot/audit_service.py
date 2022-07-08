@@ -83,7 +83,7 @@ class AuditService:
                 with self._database_connection.lock:
                     self._database_connection.cursor.execute(
                         "UPDATE users SET last_audit_date = ?, account_name = ? WHERE ts_db_id= ?",
-                        date.today(), auth.name, client_unique_id)
+                        (date.today(), auth.name, client_unique_id))
                     self._database_connection.conn.commit()
             else:
                 LOG.info("User %s is no longer on our server. Removing access....", account_name)
