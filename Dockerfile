@@ -14,7 +14,7 @@ WORKDIR /app
 CMD ["ts-gw2-verify-bot"]
 
 COPY . .
-RUN pip install --use-feature=in-tree-build --no-cache-dir .
+RUN pip install --no-cache-dir .
 
 #VOLUME /app/data
 #VOLUME /app/config
