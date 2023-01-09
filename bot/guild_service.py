@@ -410,7 +410,7 @@ class GuildService:
             unique_id = name.encode('utf8')
             return binascii.crc32(unique_id)
 
-    def update_icon(self, guild_id, guild_name, ts_group, guild_emblem, icon_id_to_replace):
+    def update_icon(self, db_id,guild_id, guild_name, ts_group, guild_emblem, icon_id_to_replace):
 
         if guild_name is not None:
             icon_id = self.generate_guild_icon_id(guild_name, guild_emblem)
@@ -438,5 +438,5 @@ class GuildService:
 
                     ts3_facade.remove_icon_if_exists(icon_id_to_replace)
             with self._database.lock:
-                self._database.cursor.execute("UPDATE guilds SET icon_id = ? WHERE guild_id = ?", (icon_id, guild_id,))
+                self._database.cursor.execute("UPDATE guilds SET icon_id = ? WHERE guild_id = ?", (icon_id, db_id,))
                 self._database.conn.commit()

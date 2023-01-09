@@ -68,22 +68,30 @@ class GuildAuditService:
         self.audit_thread.start()
         LOG.info("Audit Worker is started and pulling audit jobs")
 
-    def audit_guild(self, guild_id: int):
+    def audit_guild(self, db_id: int):
         with self._database_connection.lock:
             db_guild_entity = self._database_connection.cursor.execute(
-                "SELECT guild_id,guild_name,ts_group,icon_id FROM guilds WHERE guild_id = ?", (guild_id,)).fetchone()
-            guild_id, guild_name, ts_group, current_icon_id = db_guild_entity if db_guild_entity is not None else [None, None, None, None]
+                "SELECT guild_id,guild_name,ts_group,icon_id,gw2_guild_id FROM guilds WHERE guild_id = ?", (db_id,)).fetchone()
+            stored_guild_id, guild_name, ts_group, current_icon_id, gw2_guild_id = db_guild_entity if db_guild_entity is not None else [None, None, None, None, None]
         if guild_name is not None:
             guild_info = gw2api.guild_get(gw2api.guild_search(guild_name))
 
-            guild_name = guild_info.get("name")
-            guild_tag = guild_info.get("tag")
-            guild_id = guild_info.get("id")
-            guild_emblem = guild_info.get("emblem")
+            if guild_info is not None:
+                guild_name = guild_info.get("name")
+                # guild_tag = guild_info.get("tag")
+                guild_id = guild_info.get("id")
+                guild_emblem = guild_info.get("emblem")
 
-            icon_id = self._guild_service.generate_guild_icon_id(guild_name, guild_emblem)
-            if current_icon_id != icon_id:
-                self._guild_service.update_icon(guild_id, guild_name, ts_group, guild_emblem, current_icon_id)
+                if gw2_guild_id is None:
+                    with self._database_connection.lock:
+                        self._database_connection.cursor.execute("UPDATE guilds SET gw2_guild_id = ? WHERE guild_id = ?", (guild_id, db_id,))
+                        self._database_connection.conn.commit()
+
+                icon_id = self._guild_service.generate_guild_icon_id(guild_name, guild_emblem)
+                if current_icon_id != icon_id:
+                    self._guild_service.update_icon(guild_id, guild_name, ts_group, guild_emblem, current_icon_id, db_id)
+            else:
+                LOG.warning("Guild %s is not available form the gw2 api anymore", guild_name)
 
     def trigger_guild_audit(self):
         LOG.info("Auditing guilds")
