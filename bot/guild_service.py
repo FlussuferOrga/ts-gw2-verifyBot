@@ -403,12 +403,11 @@ class GuildService:
     def generate_guild_icon_id(name: str, emblem: Optional[Emblem]) -> int:
         if emblem is not None:
             emblem_json = json.dumps(emblem, sort_keys=True)
-            unique_id = ("guild_{0}_{1}".format(name, emblem_json)).encode('utf8');
+            unique_id = ("g_{0}_{1}".format(name, emblem_json)).encode('utf8')
             return binascii.crc32(unique_id)
         else:
             # Old Method
-            unique_id = name.encode('utf8')
-            return binascii.crc32(unique_id)
+            return binascii.crc32(name.encode('utf8'))
 
     def update_icon(self, db_id,guild_id, guild_name, ts_group, guild_emblem, icon_id_to_replace):
 
@@ -436,7 +435,11 @@ class GuildService:
                         server_group_id = group.get("sgid")
                         ts3_facade.servergroup_add_permission(server_group_id, PERMISSION_ICON_ID, icon_id)
 
+                if icon_id_to_replace is not None:
                     ts3_facade.remove_icon_if_exists(icon_id_to_replace)
-            with self._database.lock:
-                self._database.cursor.execute("UPDATE guilds SET icon_id = ? WHERE guild_id = ?", (icon_id, db_id,))
-                self._database.conn.commit()
+                else:
+                    ts3_facade.remove_icon_if_exists(self.generate_guild_icon_id(guild_name, None))
+
+                with self._database.lock:
+                    self._database.cursor.execute("UPDATE guilds SET icon_id = ? WHERE guild_id = ?", (icon_id, db_id,))
+                    self._database.conn.commit()

@@ -38,7 +38,7 @@ class GuildAuditService:
         self._audit_queue: PriorityQueue[GuildAuditQueueEntry] = PriorityQueue()  # pylint: disable=unsubscriptable-object
         self._start_audit_queue_worker()
 
-    def queue_guild_audit(self, priority: int, db_id: integer):
+    def queue_guild_audit(self, priority: int, db_id: int):
         queue_entry = GuildAuditQueueEntry(priority, db_id=db_id)
         LOG.debug("Adding entry to guild audit queue for : %s", db_id)
         self._audit_queue.put(queue_entry)
@@ -89,7 +89,7 @@ class GuildAuditService:
 
                 icon_id = self._guild_service.generate_guild_icon_id(guild_name, guild_emblem)
                 if current_icon_id != icon_id:
-                    self._guild_service.update_icon(db_id,guild_id, guild_name, ts_group, guild_emblem, current_icon_id)
+                    self._guild_service.update_icon(db_id, guild_id, guild_name, ts_group, guild_emblem, current_icon_id)
             else:
                 LOG.warning("Guild %s is not available form the gw2 api anymore", guild_name)
 
