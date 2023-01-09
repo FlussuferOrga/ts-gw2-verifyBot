@@ -1,8 +1,9 @@
 import binascii
 import datetime
+import json
 import logging
 import re
-from typing import Iterator
+from typing import Iterator, Optional
 
 import humanize
 
@@ -12,12 +13,20 @@ from bot.connection_pool import ConnectionPool
 from bot.db import ThreadSafeDBConnection
 from bot.ts import TS3Facade, User
 from .emblem_downloader import download_guild_emblem
+from .gwapi.guild import Emblem
 
 LOG = logging.getLogger(__name__)
 
 
-def _generate_guild_icon_id(name) -> int:
-    return binascii.crc32(name.encode('utf8'))
+def _generate_guild_icon_id(name: str, emblem: Optional[Emblem]) -> int:
+    if emblem is not None:
+        emblem_json = json.dumps(emblem, sort_keys=True)
+        unique_id = ("gw2guildIcon_{0}_{1}".format(name, emblem_json)).encode('utf8');
+        return binascii.crc32(unique_id)
+    else:
+        # Old Method
+        unique_id = name.encode('utf8')
+        return binascii.crc32(unique_id)
 
 
 def formatSeconds(seconds):
@@ -76,6 +85,7 @@ class GuildService:
         guild_name = guild_info.get("name")
         guild_tag = guild_info.get("tag")
         guild_id = guild_info.get("id")
+        guild_emblem = guild_info.get("emblem")
 
         if group_name is None:
             group_name = guild_tag
@@ -130,8 +140,8 @@ class GuildService:
                 # Icon uploading
                 icon_content = download_guild_emblem(guild_id)  # Returns None if no icon
                 if icon_content is not None:
-                    icon_id = _generate_guild_icon_id(guild_name)
-                    LOG.info("Uploading icon as '%s'", icon_id)
+                    icon_id = _generate_guild_icon_id(guild_name, guild_emblem)
+                    LOG.info("Uploading icon as '%s' size:%s", icon_id, len(icon_content))
                     ts_facade.upload_icon(icon_id, icon_content)
 
                 ##################################
@@ -184,8 +194,8 @@ class GuildService:
             # must exist in DB before creating group to have it available when reordering groups.
             LOG.debug("Creating entry in database for auto assignment of guild group...")
             with self._database.lock:
-                self._database.cursor.execute("INSERT INTO guilds(ts_group, guild_name) VALUES(?,?)",
-                                              (group_name, guild_name))
+                self._database.cursor.execute("INSERT INTO guilds(ts_group, guild_name, icon_id) VALUES(?,?,?)",
+                                              (group_name, guild_name, icon_id))
                 self._database.conn.commit()
 
             #######################
@@ -328,8 +338,8 @@ class GuildService:
 
         with self._database.lock:
             db_guild_entity = self._database.cursor.execute(
-                "SELECT ts_group,guild_name FROM guilds WHERE lower(guild_name) = lower(?)", (name,)).fetchone()
-            guild_group_name, guild_name = db_guild_entity if db_guild_entity is not None else [None, None]
+                "SELECT ts_group,guild_name,icon_id FROM guilds WHERE lower(guild_name) = lower(?)", (name,)).fetchone()
+            guild_group_name, guild_name, current_icon_id = db_guild_entity if db_guild_entity is not None else [None, None, None]
 
         if guild_group_name is None or guild_name is None:
             return NO_DB_ENTRY
@@ -357,9 +367,13 @@ class GuildService:
                 LOG.debug("Deleting group '%s'.", guild_group_name)
                 ts3_facade.servergroup_delete(group.get("sgid"), force=True)
 
-            guild_icon_id = _generate_guild_icon_id(guild_name)
-
-            ts3_facade.remove_icon_if_exists(guild_icon_id)
+            if current_icon_id is not None:
+                LOG.debug("Removing Icon based on stored icon ID")
+                ts3_facade.remove_icon_if_exists(current_icon_id)
+            else:  # legacy
+                LOG.debug("Removing Icon based on calculated icon id (legacy)")
+                guild_icon_id = _generate_guild_icon_id(guild_name, None)
+                ts3_facade.remove_icon_if_exists(guild_icon_id)
 
         # FROM DB
         LOG.debug("Deleting guild '%s' from DB.", guild_name)

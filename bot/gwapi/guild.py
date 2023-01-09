@@ -1,11 +1,21 @@
-from typing import TypedDict
+from typing import List, TypedDict
 
+
+class EmblemData(TypedDict):
+    id: int
+    colors: List[int]
+
+
+class Emblem(TypedDict):
+    background: EmblemData
+    foreground: EmblemData
+    flags: List[str]
 
 class AnonymousGuild(TypedDict):
     id: str
     name: str
     tag: str
-    # emblem:
+    emblem: Emblem
 
 
 class Guild(AnonymousGuild):

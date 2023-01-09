@@ -31,7 +31,8 @@ def _initialize_database(dbc, version):
         dbc.cursor.execute('''CREATE TABLE guilds(
                             guild_id integer primary key autoincrement,
                             guild_name text UNIQUE,
-                            ts_group text UNIQUE)''')
+                            ts_group text UNIQUE
+                            icon_id integer)''')
         dbc.conn.commit()
 
         # GUILD IGNORES

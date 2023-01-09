@@ -9,7 +9,7 @@ LOG = logging.getLogger(__name__)
 EMBLEM_STATUS_HEADER = "Emblem-Status"
 
 
-def download_guild_emblem(guild_id: str, icon_size: int = 128) -> Optional[bytes]:
+def download_guild_emblem(guild_id: str, icon_size: int = 64) -> Optional[bytes]:
     """
     Download a guild emblem from emblem.werdes.net and checks if the response contains a real emblem or a fallback placeholder
     :param guild_id: ID of the guild as returned from the gw2 api
