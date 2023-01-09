@@ -89,7 +89,7 @@ class GuildAuditService:
 
                 icon_id = self._guild_service.generate_guild_icon_id(guild_name, guild_emblem)
                 if current_icon_id != icon_id:
-                    self._guild_service.update_icon(guild_id, guild_name, ts_group, guild_emblem, current_icon_id, db_id)
+                    self._guild_service.update_icon(db_id,guild_id, guild_name, ts_group, guild_emblem, current_icon_id)
             else:
                 LOG.warning("Guild %s is not available form the gw2 api anymore", guild_name)
 
