@@ -15,18 +15,9 @@ from bot.ts import TS3Facade, User
 from .emblem_downloader import download_guild_emblem
 from .gwapi.guild import Emblem
 
+PERMISSION_ICON_ID = "i_icon_id"
+
 LOG = logging.getLogger(__name__)
-
-
-def _generate_guild_icon_id(name: str, emblem: Optional[Emblem]) -> int:
-    if emblem is not None:
-        emblem_json = json.dumps(emblem, sort_keys=True)
-        unique_id = ("gw2guildIcon_{0}_{1}".format(name, emblem_json)).encode('utf8');
-        return binascii.crc32(unique_id)
-    else:
-        # Old Method
-        unique_id = name.encode('utf8')
-        return binascii.crc32(unique_id)
 
 
 def formatSeconds(seconds):
@@ -140,7 +131,7 @@ class GuildService:
                 # Icon uploading
                 icon_content = download_guild_emblem(guild_id)  # Returns None if no icon
                 if icon_content is not None:
-                    icon_id = _generate_guild_icon_id(guild_name, guild_emblem)
+                    icon_id = self.generate_guild_icon_id(guild_name, guild_emblem)
                     LOG.info("Uploading icon as '%s' size:%s", icon_id, len(icon_content))
                     ts_facade.upload_icon(icon_id, icon_content)
 
@@ -276,7 +267,7 @@ class GuildService:
             ("i_group_sort_id", self._config.guilds_sort_id),
         ]
         if icon_id is not None:
-            perms.append(("i_icon_id", icon_id))
+            perms.append((PERMISSION_ICON_ID, icon_id))
         return perms
 
     def _sort_guild_groups_using_talk_power(self, groups, ts_facade):
@@ -372,7 +363,7 @@ class GuildService:
                 ts3_facade.remove_icon_if_exists(current_icon_id)
             else:  # legacy
                 LOG.debug("Removing Icon based on calculated icon id (legacy)")
-                guild_icon_id = _generate_guild_icon_id(guild_name, None)
+                guild_icon_id = self.generate_guild_icon_id(guild_name, None)
                 ts3_facade.remove_icon_if_exists(guild_icon_id)
 
         # FROM DB
@@ -407,3 +398,45 @@ class GuildService:
         sub_channels = [c for c in all_channels if c.get("pid") == parent_id]
         for sub1 in sub_channels:
             yield from self.grab_channel(all_channels, facade, sub1)
+
+    @staticmethod
+    def generate_guild_icon_id(name: str, emblem: Optional[Emblem]) -> int:
+        if emblem is not None:
+            emblem_json = json.dumps(emblem, sort_keys=True)
+            unique_id = ("gw2guildIcon_{0}_{1}".format(name, emblem_json)).encode('utf8');
+            return binascii.crc32(unique_id)
+        else:
+            # Old Method
+            unique_id = name.encode('utf8')
+            return binascii.crc32(unique_id)
+
+    def update_icon(self, guild_id, guild_name, ts_group, guild_emblem, icon_id_to_replace):
+
+        if guild_name is not None:
+            icon_id = self.generate_guild_icon_id(guild_name, guild_emblem)
+            icon_content = download_guild_emblem(guild_id)
+            if icon_content is not None:
+                with self.ts_connection_pool.item() as ts3_facade:
+
+                    ts3_facade.upload_icon(icon_id, icon_content)
+
+                    found_channels = ts3_facade.channel_find_all(guild_name)
+                    if found_channels is None or len(found_channels) == 0:
+                        LOG.warning("No channel found to update.")
+                    elif len(found_channels) == 1:
+                        ts3_facade.channel_add_permission(found_channels[0].id, PERMISSION_ICON_ID, icon_id)
+                    else:
+                        LOG.warning("More than one channel to Update, skipping channel update")
+
+                    groups = ts3_facade.servergroup_list()
+                    group = next((g for g in groups if g.get("name") == ts_group), None)
+                    if group is None:
+                        LOG.debug("No group '%s' to update.", ts_group)
+                    else:
+                        server_group_id = group.get("sgid")
+                        ts3_facade.servergroup_add_permission(server_group_id, PERMISSION_ICON_ID, icon_id)
+
+                    ts3_facade.remove_icon_if_exists(icon_id_to_replace)
+            with self._database.lock:
+                self._database.cursor.execute("UPDATE guilds SET icon_id = ? WHERE guild_id = ?", (icon_id, guild_id,))
+                self._database.conn.commit()

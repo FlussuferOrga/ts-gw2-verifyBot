@@ -44,7 +44,7 @@ class GuildController(AbstractController):
 
         @self.api.route("/guild/channels", methods=["GET"])
         def _guild_channels():
-            LOG.info("Received request list guilöd channels")
+            LOG.info("Received request list guild channels")
 
             res = list(self._service.list_channels())
             if res is not None and len(res) > 0:

@@ -49,8 +49,8 @@ def main(args: Namespace):  #
 
 def _create_job_thread():
     job_thread = RepeatTimer(10.0, schedule.run_pending)
-    job_thread.setDaemon(True)
-    job_thread.setName("schedule_run_pending")
+    job_thread.daemon = True
+    job_thread.name = "schedule_run_pending"
     return job_thread
 
 
@@ -76,10 +76,10 @@ def _continuous_loop(config, database, ts_connection_pool):
                 # Always audit users on initialize if user audit date is up (in case the script is reloaded several
                 # times before audit interval hits, so we can ensure we maintain user database accurately)
                 bot_instance.trigger_user_audit()
+                bot_instance.trigger_guild_audit()
 
                 # Set audit schedule job to run in X days
                 audit_trigger_job = schedule.every(config.audit_interval).days.at("06:00").do(bot_instance.trigger_user_audit)
-
                 bot_instance.listen_for_events()
             finally:
                 if bot_instance is not None:

@@ -16,6 +16,7 @@ class Config:
 
         # Features
         self.enable_verification = self._try_get(configs, "features", "enable_verification", True, True)
+        self.enable_guild_audit = self._try_get(configs, "features", "enable_guild_audit", True, True)
 
         # Teamspeak Connection Settings
         self.protocol = configs.get("teamspeak connection settings", "protocol", fallback="telnet")  # telnet or ssh

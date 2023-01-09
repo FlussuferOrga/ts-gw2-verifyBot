@@ -11,6 +11,7 @@ from .event_looper import EventLooper
 from .guild_service import GuildService
 from .reset_roster_service import ResetRosterService
 from .user_service import UserService
+from .guild_audit_service import GuildAuditService
 
 LOG = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class Bot:
         self.user_service = UserService(self._database_connection, self._ts_connection_pool, config)
         self.audit_service = AuditService(self._database_connection, self._ts_connection_pool, config, self.user_service)
         self.guild_service = GuildService(self._database_connection, self._ts_connection_pool, config)
+        self.guild_audit_service = GuildAuditService(self._database_connection, self._ts_connection_pool, config, self.guild_service)
         self.commander_service = CommanderService(self._ts_connection_pool, self.user_service, config)
         self.reset_roster_service = ResetRosterService(self._ts_connection_pool, config)
 
@@ -36,6 +38,9 @@ class Bot:
 
     def trigger_user_audit(self):
         self.audit_service.trigger_user_audit()
+
+    def trigger_guild_audit(self):
+        self.guild_audit_service.trigger_guild_audit()
 
     def close(self):
         self.active_loop.close()

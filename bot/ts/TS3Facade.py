@@ -99,14 +99,14 @@ class TS3Facade:
                                                                      channel_flag_maxclients_unlimited=1 if channel_maxclients == -1 else 0).first(), signal_exception_handler)
         return ts_exec
 
-    def channel_add_permission(self, channel_id: str, permission_id: str, permission_value: int, negated: bool = False, skip: bool = False):
+    def channel_add_permission(self, channel_id: int, permission_id: str, permission_value: int, negated: bool = False, skip: bool = False):
         return self._ts3_connection.ts3exec_raise(lambda tsc: tsc.exec_("channeladdperm",
                                                                         cid=channel_id, permsid=permission_id,
                                                                         permvalue=permission_value,
                                                                         permnegated=1 if negated else 0,
                                                                         permskip=1 if skip else 0))
 
-    def channel_add_permissions(self, channel_id: str, permissions: List[Tuple[str, int]]):
+    def channel_add_permissions(self, channel_id: int, permissions: List[Tuple[str, int]]):
         for permission_id, permission_value in permissions:
             self.channel_add_permission(channel_id, permission_id=permission_id, permission_value=permission_value)
 
