@@ -80,6 +80,7 @@ def _continuous_loop(config, database, ts_connection_pool):
 
                 # Set audit schedule job to run in X days
                 audit_trigger_job = schedule.every(config.audit_interval).days.at("06:00").do(bot_instance.trigger_user_audit)
+                audit_trigger_job = schedule.every(7).days.at("05:00").do(bot_instance.trigger_guild_audit())
                 bot_instance.listen_for_events()
             finally:
                 if bot_instance is not None:
