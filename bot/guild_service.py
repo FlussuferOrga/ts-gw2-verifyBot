@@ -403,7 +403,7 @@ class GuildService:
     def generate_guild_icon_id(name: str, emblem: Optional[Emblem]) -> int:
         if emblem is not None:
             emblem_json = json.dumps(emblem, sort_keys=True)
-            unique_id = ("gw2guildIcon_{0}_{1}".format(name, emblem_json)).encode('utf8');
+            unique_id = ("guild_{0}_{1}".format(name, emblem_json)).encode('utf8');
             return binascii.crc32(unique_id)
         else:
             # Old Method
