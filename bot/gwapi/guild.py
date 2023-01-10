@@ -11,6 +11,7 @@ class Emblem(TypedDict):
     foreground: EmblemData
     flags: List[str]
 
+
 class AnonymousGuild(TypedDict):
     id: str
     name: str

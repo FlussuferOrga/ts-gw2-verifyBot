@@ -409,8 +409,7 @@ class GuildService:
             # Old Method
             return binascii.crc32(name.encode('utf8'))
 
-    def update_icon(self, db_id,guild_id, guild_name, ts_group, guild_emblem, icon_id_to_replace):
-
+    def update_icon(self, db_id, guild_id, guild_name, ts_group, guild_emblem, icon_id_to_replace):
         if guild_name is not None:
             icon_id = self.generate_guild_icon_id(guild_name, guild_emblem)
             icon_content = download_guild_emblem(guild_id)

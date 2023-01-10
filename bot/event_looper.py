@@ -332,4 +332,3 @@ class EventLooper:
 
     def close(self):
         self.closed = True
-        pass
