@@ -1,11 +1,11 @@
 #!/usr/bin/python
 import logging
+import time  # time for sleep function
 from argparse import Namespace
 from typing import Tuple
 
 import configargparse
 import schedule
-import time  # time for sleep function
 import ts3
 
 from bot import Bot
@@ -75,8 +75,8 @@ def _continuous_loop(config, database, ts_connection_pool):
                 LOG.info("BOT Database Audit policies initiating.")
                 # Always audit users on initialize if user audit date is up (in case the script is reloaded several
                 # times before audit interval hits, so we can ensure we maintain user database accurately)
-                bot_instance.trigger_user_audit()
-                bot_instance.trigger_guild_audit()
+                # bot_instance.trigger_user_audit()
+                # bot_instance.trigger_guild_audit()
 
                 # Set audit schedule job to run in X days
                 audit_trigger_job = schedule.every(config.audit_interval).days.at("06:00").do(bot_instance.trigger_user_audit)

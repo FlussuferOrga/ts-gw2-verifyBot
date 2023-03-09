@@ -43,13 +43,12 @@ _anonymousClient = _create_client()  # this client can be reused, to save initia
 
 
 def _check_error(result):
-    if result.status_code == 429:
-        raise ApiUnavailableError("Rate Limited")
     if "text" in result:
         error_text = result["text"]
         LOG.info("Api returned error: %s", error_text)
-        if error_text == "too many requests":  # rate limiting
-            raise ApiUnavailableError(error_text)
+        if result.status_code == 429 or error_text == "too many requests":
+            LOG.debug("Rate Limited:" + result)
+            raise ApiUnavailableError("Rate Limited:" + error_text)
         if error_text == "ErrTimeout":  # happens on login server down
             raise ApiUnavailableError(error_text)
         if error_text == "ErrInternal":

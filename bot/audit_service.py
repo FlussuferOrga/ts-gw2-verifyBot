@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import logging
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import date
 from queue import Empty, PriorityQueue
@@ -131,8 +132,8 @@ class AuditService:
                 # self.removeUserFromDB(audit_ts_id)
             else:
                 LOG.info("User %s is due for auditing! Queueing", audit_account_name)
-                with self._database_connection.lock:
-                    self.queue_user_audit(QUEUE_PRIORITY_AUDIT, audit_account_name, audit_api_key, audit_ts_id)
+                self.queue_user_audit(QUEUE_PRIORITY_AUDIT, audit_account_name, audit_api_key, audit_ts_id)
+                time.sleep(2)  # sleep 2s due to api rate limiting, so we delay queueing
 
         with self._database_connection.lock:
             self._database_connection.cursor.execute('INSERT INTO bot_info (last_succesful_audit) VALUES (?)',
