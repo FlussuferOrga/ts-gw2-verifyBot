@@ -47,7 +47,6 @@ def _check_error(result):
         error_text = result["text"]
         LOG.info("Api returned error: '%s'", error_text)
         if ("status_code" in result and result["status_code"] == 429) or error_text == "too many requests":
-            LOG.info("Rate Limited:" + result)
             raise ApiUnavailableError("Rate Limited:" + error_text)
         if error_text == "ErrTimeout":  # happens on login server down
             raise ApiUnavailableError(error_text)
