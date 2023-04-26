@@ -1,4 +1,4 @@
-requests==2.28.2
+requests==2.29.0
 schedule==1.1.0
 ts3==2.0.0b2
 Flask==2.2.3
