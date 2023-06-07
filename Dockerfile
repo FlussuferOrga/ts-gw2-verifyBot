@@ -1,4 +1,4 @@
-FROM python:3-slim
+FROM python:3.11-slim
 
 RUN apt-get update && \
     apt-get -y --no-install-recommends install curl libcap2 && \
