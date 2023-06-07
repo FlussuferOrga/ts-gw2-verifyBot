@@ -48,7 +48,7 @@ class Gw2ApiFacadeTest(TestCase):
     def test_get_characters(self):
         characters = gw2api.characters_get(self.TEST_TOKEN)
         self.assertEqual(len(characters), 2)
-        self.assertSetEqual(set(map(lambda x: x.get("level"), characters)), {23, 12})
+        self.assertSetEqual(set(map(lambda x: x.get("level"), characters)), {24, 13})
         self.assertSetEqual(set(map(lambda x: x.get("name"), characters)), {"Eff Testing Warr", "Eff Testing Ele"})
 
     def test_get_worlds(self):
