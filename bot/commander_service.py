@@ -69,7 +69,7 @@ class CommanderService:
 
         with self._ts_connection_pool.item() as ts_facade:
             acs = ts_facade.channelgroup_client_list([g["cgid"] for g in self._commander_groups])
-            LOG.info(acs)
+            # LOG.info(acs)
             for ts_entry in acs:
                 client_dbid = ts_entry.get("cldbid")
                 user = User(ts_facade, ts_db_id=client_dbid)

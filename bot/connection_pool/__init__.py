@@ -161,7 +161,7 @@ class ConnectionPool(Generic[_T]):
                 except Exception as ex:
                     raise ConnectionInitializationException("A new connection for the pool could not be created.") from ex
             else:
-                LOG.info("Connection %s will be checked out from the pool", wrapped)
+                LOG.debug("Connection %s will be checked out from the pool", wrapped)
         finally:
             self._lock.release()
 
