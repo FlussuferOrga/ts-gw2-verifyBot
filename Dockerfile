@@ -5,7 +5,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-HEALTHCHECK --interval=2m --timeout=5s CMD curl -f http://localhost:10137/health || exit 1
+HEALTHCHECK --interval=2m --timeout=10s CMD curl -f http://localhost:10137/health || exit 1
 
 # rest port
 EXPOSE 10137/tcp
