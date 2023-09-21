@@ -202,8 +202,6 @@ components:
         - bbl
         - ebg
       properties:
-        date:
-          type: string
         datetime:
           type: string
           format: datetime
