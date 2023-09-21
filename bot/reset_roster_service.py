@@ -1,4 +1,8 @@
 import logging
+from datetime import datetime
+from typing import Optional
+
+import pytz
 
 from bot import ts
 from bot.config import Config
@@ -8,14 +12,15 @@ from bot.util import StringShortener
 LOG = logging.getLogger(__name__)
 
 TS3_MAX_SIZE_CHANNEL_NAME = 40
-
+DISPLAY_TIMEZONE = pytz.timezone("Europe/Berlin")
+RESET_TIME_FORMAT = "%d.%m.%Y %H:%M %Z"
 
 class ResetRosterService:
     def __init__(self, ts_connection_pool: ConnectionPool[ts.TS3Facade], config: Config):
         self._config = config
         self._ts_connection_pool = ts_connection_pool
 
-    def set_reset_roster(self, date, red=None, green=None, blue=None, ebg=None):
+    def set_reset_roster(self, date: Optional[datetime], red=None, green=None, blue=None, ebg=None):
         leads = (
             [],
             red if red is not None else [],
@@ -24,8 +29,13 @@ class ResetRosterService:
             ebg if ebg is not None else []
         )  # keep RGB order! EBG as last! Pad first slot (header) with empty list
 
+        if date is not None:
+            date_as_str = date.astimezone(DISPLAY_TIMEZONE).strftime(RESET_TIME_FORMAT)
+        else:
+            date_as_str = ""
+
         with self._ts_connection_pool.item() as facade:
-            channels = [(p, c.replace("$DATE", date)) for p, c in self._config.reset_channels]
+            channels = [(p, c.replace("$DATE", date_as_str)) for p, c in self._config.reset_channels]
             for i, reset_channel in enumerate(channels):
                 pattern, clean = reset_channel
                 lead = leads[i]
