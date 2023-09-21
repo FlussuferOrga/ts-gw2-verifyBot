@@ -15,6 +15,7 @@ TS3_MAX_SIZE_CHANNEL_NAME = 40
 DISPLAY_TIMEZONE = pytz.timezone("Europe/Berlin")
 RESET_TIME_FORMAT = "%d.%m.%Y %H:%M %Z"
 
+
 class ResetRosterService:
     def __init__(self, ts_connection_pool: ConnectionPool[ts.TS3Facade], config: Config):
         self._config = config
