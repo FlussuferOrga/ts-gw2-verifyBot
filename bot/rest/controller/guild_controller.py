@@ -26,7 +26,6 @@ class GuildController(AbstractController):
     def _routes(self):
 
         @self.api.route("/guild", methods=["POST"])
-        @timeout_decorator.timeout(seconds=60)
         def _create_guild():
             name = try_get(request.json, "name", default=None)
             group_name = try_get(request.json, "tsgroup", default=None)
@@ -45,7 +44,6 @@ class GuildController(AbstractController):
                 raise BadRequest(f"Operation was not successful. Response code: {res}")
 
         @self.api.route("/guild/channels", methods=["GET"])
-        @timeout_decorator.timeout(seconds=60)
         def _guild_channels():
             LOG.info("Received request list guild channels")
 
@@ -58,7 +56,6 @@ class GuildController(AbstractController):
                 raise http_exception
 
         @self.api.route("/guild", methods=["DELETE"])
-        @timeout_decorator.timeout(seconds=60)
         def _delete_guild():
             name = try_get(request.json, "name", default=None)
             self.validate_name(name)

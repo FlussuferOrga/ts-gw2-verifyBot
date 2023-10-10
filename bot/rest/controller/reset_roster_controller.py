@@ -20,7 +20,6 @@ class ResetRosterController(AbstractController):
 
     def _routes(self):
 
-        @timeout_decorator.timeout(seconds=30)
         @self.api.route("/resetroster", methods=["POST"])
         def _reset_roster():
             body = request.json

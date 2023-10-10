@@ -17,7 +17,6 @@ class RegistrationController(AbstractController):
 
     def _routes(self):
 
-        @timeout_decorator.timeout(seconds=30)
         @self.api.route("/registration", methods=["DELETE"])
         def _delete_registration():
             body = request.json

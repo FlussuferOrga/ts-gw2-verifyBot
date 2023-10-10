@@ -8,7 +8,6 @@ from ...util import thread_dump
 class HealthController(AbstractController):
     def _routes(self):
 
-        @timeout_decorator.timeout(seconds=10)
         @self.api.route("/health", methods=["GET"])
         def _health():
             return Response("OK", 200, None, None, "text/plain")
