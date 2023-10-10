@@ -1,6 +1,7 @@
 import logging
 
 from flask import request
+from timeout_decorator import timeout_decorator
 
 from bot import UserService
 from bot.rest.controller.abstract_controller import AbstractController
@@ -15,6 +16,8 @@ class RegistrationController(AbstractController):
         self._user_service = user_service
 
     def _routes(self):
+
+        @timeout_decorator.timeout(seconds=30)
         @self.api.route("/registration", methods=["DELETE"])
         def _delete_registration():
             body = request.json

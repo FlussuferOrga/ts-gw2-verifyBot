@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from flask import request
+from timeout_decorator import timeout_decorator
 from werkzeug.exceptions import abort
 
 from bot import ResetRosterService
@@ -18,6 +19,8 @@ class ResetRosterController(AbstractController):
         self._service = reset_roster_service
 
     def _routes(self):
+
+        @timeout_decorator.timeout(seconds=30)
         @self.api.route("/resetroster", methods=["POST"])
         def _reset_roster():
             body = request.json

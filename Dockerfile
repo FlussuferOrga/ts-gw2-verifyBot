@@ -1,11 +1,11 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 RUN apt-get update && \
     apt-get -y --no-install-recommends install curl libcap2 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-HEALTHCHECK --interval=2m --timeout=10s CMD curl -f http://localhost:10137/health || exit 1
+HEALTHCHECK --interval=2m --timeout=10s CMD curl --silent --fail http://localhost:10137/health > /dev/null || exit 1
 
 # rest port
 EXPOSE 10137/tcp
