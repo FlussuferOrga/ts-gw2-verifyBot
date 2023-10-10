@@ -1,8 +1,10 @@
 import logging
-from typing import List, Optional
+from functools import wraps
+from typing import Callable, List, Optional
 
 from cachetools import LRUCache, TTLCache, cached
 from gw2api import GuildWars2Client
+from requests import HTTPError
 
 from .account import Account
 from .character import Character
@@ -42,24 +44,10 @@ def _create_client(api_key: str = None) -> GuildWars2Client:
 _anonymousClient = _create_client()  # this client can be reused, to save initialization time for non-api-key requests
 
 
-def _check_error(result):
-    if "text" in result:
-        error_text = result["text"]
-        LOG.info("Api returned error: '%s'", error_text)
-        if error_text == "too many requests":
-            raise ApiUnavailableError("Rate Limited: " + error_text)
-        if error_text == "ErrTimeout":  # happens on login server down
-            raise ApiUnavailableError(error_text)
-        if error_text == "ErrInternal":
-            raise ApiUnavailableError(error_text)
-        if error_text == "invalid key" or error_text == "Invalid access token":  # when key is invalid or not a key at all
-            raise ApiKeyInvalidError(error_text)
-        raise ApiError(error_text)
-    return result
-
-
-class ApiError(RuntimeError):
-    pass
+class ApiError(Exception):
+    def __init__(self, message):
+        self.message = message
+        super().__init__(message)
 
 
 class ApiUnavailableError(ApiError):
@@ -70,23 +58,61 @@ class ApiKeyInvalidError(ApiError):
     pass
 
 
+def error_checked(decorator):
+    @wraps(decorator)
+    def wrapper(*args, **kw):
+        try:
+            if len(args) == 1 and not kw and callable(args[0]):
+                result = decorator()(args[0])
+            else:
+                result = decorator(*args, **kw)
+        except HTTPError as e:
+            status_code = e.response.status_code
+            json = e.response.json()
+            if json is not None and "text" in json:
+                error_text = json["text"]
+                if error_text == "Invalid access token":
+                    raise ApiKeyInvalidError(error_text)
+                if error_text == "too many requests":
+                    raise ApiUnavailableError("Rate Limited")
+                if error_text == "ErrTimeout":  # happens on login server down
+                    raise ApiUnavailableError(error_text)
+                if error_text == "ErrInternal":
+                    raise ApiUnavailableError(error_text)
+                if error_text == "invalid key" or error_text == "Invalid access token":  # when key is invalid or not a key at all
+                    raise ApiKeyInvalidError(error_text)
+                LOG.warning("API Returned Error %s - %s", status_code, error_text)
+                raise ApiError(str(status_code) + ":" + error_text) from e
+            LOG.warning("API Returned %s - %s", status_code, e.response.text)
+            raise ApiError("Unknown API Error") from e
+        # if result:
+        #     _check_error(result)
+        return result
+
+    return wrapper
+
+
 @cached(cache=TTLCache(maxsize=20, ttl=60 * 60))  # cache for 1h
+@error_checked
 def guild_get(guild_id: str) -> Optional[AnonymousGuild]:
-    result = _anonymousClient.guildid.get(guild_id)
-    return _check_error(result)
+    return _anonymousClient.guildid.get(guild_id)
 
 
 @cached(cache=TTLCache(maxsize=10, ttl=300))  # cache clients for 5 min - creation takes quite long
+@error_checked
 def guild_get_full(api_key: str, guild_id: str) -> Optional[Guild]:
     api = _create_client(api_key=api_key)
-    result = api.guildid.get(guild_id)
-    return _check_error(result)
+    return api.guildid.get(guild_id)
+
+
+@error_checked
+def guild_search_internal(guild_name: str) -> Optional[str]:
+    return _anonymousClient.guildsearch.get(name=guild_name)
 
 
 @cached(cache=TTLCache(maxsize=32, ttl=600))  # cache for 10 min
 def guild_search(guild_name: str) -> Optional[str]:
-    search_result = _anonymousClient.guildsearch.get(name=guild_name)
-    search_result = _check_error(search_result)
+    search_result = guild_search_internal(guild_name)
     if len(search_result) == 0:
         return None
     if len(search_result) > 1:
@@ -95,27 +121,32 @@ def guild_search(guild_name: str) -> Optional[str]:
 
 
 @cached(cache=TTLCache(maxsize=32, ttl=300))  # cache clients for 5 min - creation takes quite long
+@error_checked
 def account_get(api_key: str) -> Account:
     api = _create_client(api_key=api_key)
-    return _check_error(api.account.get())
+    return api.account.get()
 
 
 @cached(cache=TTLCache(maxsize=32, ttl=300))  # cache clients for 5 min - creation takes quite long
+@error_checked
 def characters_get(api_key: str) -> List[Character]:
     api = _create_client(api_key=api_key)
-    return _check_error(api.characters.get(page="0", page_size=200))
+    return api.characters.get(page="0", page_size=200)
 
 
 @cached(cache=LRUCache(maxsize=10))
+@error_checked
 def worlds_get_ids() -> List[int]:
-    return _check_error(_anonymousClient.worlds.get(ids=None))
+    return _anonymousClient.worlds.get(ids=None)
 
 
+@error_checked
 def worlds_get_by_ids(ids: List[int]) -> List[World]:
-    return _check_error(_anonymousClient.worlds.get(ids=ids))
+    return _anonymousClient.worlds.get(ids=ids)
 
 
 @cached(cache=LRUCache(maxsize=10))
+@error_checked
 def worlds_get_one(world_id: int = None) -> Optional[World]:
     worlds = worlds_get_by_ids([world_id])
     if len(worlds) == 1:

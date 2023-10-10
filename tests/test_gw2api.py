@@ -28,8 +28,9 @@ class Gw2ApiFacadeTest(TestCase):
         self.assertEqual(guild_info["name"], "Lqibzzexgvkikpydotxsvijehyhexd")
 
     def test_get_guild_info_wrong_id(self):
-        with self.assertRaises(gw2api.ApiError):
+        with self.assertRaises(gw2api.ApiError) as ae:
             gw2api.guild_get("bad-id-that-is-made-up")
+        self.assertEqual(ae.exception.message, "500:unknown error")
 
     def test_get_account_info(self):
         account_info = gw2api.account_get(self.TEST_TOKEN)
@@ -42,8 +43,9 @@ class Gw2ApiFacadeTest(TestCase):
         self.assertFalse(account_info["commander"])
 
     def test_get_account_info_bad_key(self):
-        with self.assertRaises(gw2api.ApiError, msg="Invalid access token"):
+        with self.assertRaises(gw2api.ApiError) as ae:
             gw2api.account_get("qdasdasd-asdasd-as-d-asd-a-sd")
+        self.assertEqual(ae.exception.message, "Invalid access token")
 
     def test_get_characters(self):
         characters = gw2api.characters_get(self.TEST_TOKEN)
