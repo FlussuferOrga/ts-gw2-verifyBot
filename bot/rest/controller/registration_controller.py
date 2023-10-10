@@ -1,7 +1,6 @@
 import logging
 
 from flask import request
-from timeout_decorator import timeout_decorator
 
 from bot import UserService
 from bot.rest.controller.abstract_controller import AbstractController

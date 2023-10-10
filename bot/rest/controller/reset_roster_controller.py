@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Optional
 
 from flask import request
-from timeout_decorator import timeout_decorator
 from werkzeug.exceptions import abort
 
 from bot import ResetRosterService

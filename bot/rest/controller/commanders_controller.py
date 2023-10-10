@@ -1,6 +1,5 @@
 import logging
 
-import timeout_decorator
 from werkzeug.exceptions import abort
 
 from bot.commander_service import CommanderService

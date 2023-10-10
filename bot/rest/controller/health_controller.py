@@ -1,5 +1,4 @@
 from flask import Response
-from timeout_decorator import timeout_decorator
 
 from .abstract_controller import AbstractController
 from ...util import thread_dump

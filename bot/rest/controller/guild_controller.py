@@ -1,7 +1,6 @@
 import logging
 
 from flask import jsonify, request
-from timeout_decorator import timeout_decorator
 from werkzeug.exceptions import BadRequest, HTTPException
 
 from bot import GuildService
