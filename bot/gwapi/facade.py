@@ -1,6 +1,6 @@
 import logging
 from functools import wraps
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from cachetools import LRUCache, TTLCache, cached
 from gw2api import GuildWars2Client
