@@ -3,7 +3,7 @@ schedule==1.2.1
 ts3==2.0.0b3
 Flask==3.0.1
 flask-cors==4.0.0
-waitress==2.1.2
+waitress==3.0.0
 GuildWars2-API-Client==0.6.0
 cachetools==5.3.2
 ConfigArgParse==1.7
