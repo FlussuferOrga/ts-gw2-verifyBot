@@ -88,7 +88,7 @@ class GuildService:
                 LOG.debug("Can not create Guild '%s', as it already exists. Aborting guild creation.", guild_id)
                 return DUPLICATE_DB_ENTRY
 
-        channel_name = self._build_channel_name(guild_info.get("name"), guild_info.get("tag"))
+        channel_name = self._build_channel_name(guild_info.get("name"), group_name)
         channel_description = self._create_guild_channel_description(contacts, guild_id, guild_name, guild_tag)
 
         LOG.info("Creating guild '%s' with tag '%s', guild group '%s', and contacts '%s'.", guild_name, guild_tag,
@@ -450,8 +450,8 @@ class GuildService:
             self._database.conn.commit()
         return channel_id
 
-    def _audit_channel(self, ts3_facade, channel_id, guild_name, guild_tag, icon_id):
-        desired_name = self._build_channel_name(guild_name, guild_tag)
+    def _audit_channel(self, ts3_facade, channel_id, guild_name, ts_group, icon_id):
+        desired_name = self._build_channel_name(guild_name, ts_group)
         c, _ = ts3_facade.channel_info(channel_id)
         current_channel_name = c.get('channel_name')
         if current_channel_name != desired_name:
@@ -504,7 +504,7 @@ class GuildService:
                 LOG.info("Auditing Channel...")
                 channel_id = channel_id or self.detect_channel_id(ts3_facade, db_id, guild_name)
                 if channel_id is not None:
-                    self._audit_channel(ts3_facade, channel_id, guild_name, guild_tag, icon_id)
+                    self._audit_channel(ts3_facade, channel_id, guild_name, ts_group, icon_id)
 
                 LOG.info("Auditing Group...")
                 group_id = group_id or self.detect_group_id(ts3_facade, db_id, ts_group)
