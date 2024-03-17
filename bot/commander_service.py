@@ -73,9 +73,9 @@ class CommanderService:
             for ts_entry in acs:
                 client_dbid = ts_entry.get("cldbid")
                 user = User(ts_facade, ts_db_id=client_dbid)
-                channel = user.current_channel
+                channel = user.current_channel_id
                 lead_channel_id = ts_entry.get("cid")
-                if channel is not None and channel.id == lead_channel_id:  # user not online or in channel
+                if channel is not None and channel == lead_channel_id:  # user not online or in channel
                     # user could have the group in a channel but not be in there atm
                     ac = {
                         "ts_cluid": user.unique_id,

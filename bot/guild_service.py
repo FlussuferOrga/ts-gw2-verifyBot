@@ -419,7 +419,6 @@ class GuildService:
             regex = re.compile(r"^" + re.escape(guild_name) + r"\s\[\w{1,4}\]$")
             for channel in found_channels:
                 if regex.fullmatch(channel.name) is not None:
-                    LOG.info("Deleting channel '%s' with id %s.", channel.channel_name, channel.id)
                     return channel.id
                 else:
                     LOG.debug("Channel %s does not match exaclty.", channel.name)
