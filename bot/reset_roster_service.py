@@ -53,4 +53,4 @@ class ResetRosterService:
         if channel is None:
             LOG.warning("No channel found with pattern '%s'. Skipping.", channel_name_pattern)
         else:
-            facade.set_channel_name(channel_id=channel.channel_id, new_channel_name=new_channel_name)
+            facade.channel_edit(channel_id=channel.channel_id, new_channel_name=new_channel_name)
