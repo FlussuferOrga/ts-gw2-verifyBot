@@ -81,6 +81,13 @@ class GuildService:
         if group_name is None:
             group_name = guild_tag
 
+        with self._database.lock:
+            dbgroups = self._database.cursor.execute(
+                "SELECT guild_name FROM guilds WHERE gw2_guild_id = ?", (guild_id,)).fetchall()
+            if len(dbgroups) > 0:
+                LOG.debug("Can not create Guild '%s', as it already exists. Aborting guild creation.", guild_id)
+                return DUPLICATE_DB_ENTRY
+
         channel_name = self._build_channel_name(guild_info.get("name"), guild_info.get("tag"))
         channel_description = self._create_guild_channel_description(contacts, guild_id, guild_name, guild_tag)
 
@@ -103,7 +110,6 @@ class GuildService:
                     LOG.debug("Can not create a group '%s', because it already exists. Aborting guild creation.", group)
                     return DUPLICATE_TS_GROUP
 
-                with self._database.lock:
                     dbgroups = self._database.cursor.execute(
                         "SELECT ts_group, guild_name FROM guilds WHERE ts_group = ?", (group_name,)).fetchall()
                     if len(dbgroups) > 0:
@@ -160,34 +166,14 @@ class GuildService:
                                                      channel_parent_id=parent.channel_id,
                                                      channel_maxclients=0,
                                                      channel_order=sort_order)
-
-                guild_channel_perms = [
-                    ("i_channel_needed_join_power", 25),
-                    ("i_channel_needed_subscribe_power", 25),
-                    ("i_channel_needed_modify_power", 45),
-                    ("i_channel_needed_delete_power", 75)
-                ]
-
-                perms = guild_channel_perms.copy()
-                if icon_id is not None:
-                    perms.append(("i_icon_id", icon_id))
-
-                ts_facade.channel_add_permissions(cinfo.get("cid"), perms)
+                channel_id = cinfo.get("cid");
+                guild_channel_perms, perms = self._create_guild_channel_permissions(icon_id)
+                ts_facade.channel_add_permissions(channel_id, perms)
 
                 for c in self._config.guild_sub_channels:
                     # FIXME: error check
-                    sub_channel_info, ex = ts_facade.channel_create(channel_name=c, channel_parent_id=cinfo.get("cid"))
+                    sub_channel_info, ex = ts_facade.channel_create(channel_name=c, channel_parent_id=channel_id)
                     ts_facade.channel_add_permissions(sub_channel_info.get("cid"), guild_channel_perms)
-
-            ###################
-            # CREATE DB GROUP #
-            ###################
-            # must exist in DB before creating group to have it available when reordering groups.
-            LOG.debug("Creating entry in database for auto assignment of guild group...")
-            with self._database.lock:
-                self._database.cursor.execute("INSERT INTO guilds(ts_group, guild_name, icon_id) VALUES(?,?,?)",
-                                              (group_name, guild_name, icon_id))
-                self._database.conn.commit()
 
             #######################
             # CREATE SERVER GROUP #
@@ -198,12 +184,18 @@ class GuildService:
                 LOG.warning("Duplication error while trying to create the group '%s' for the guild %s [%s].",
                             group_name, guild_name, guild_tag)
 
-            guild_servergroup_id = resp.get("sgid")
+            group_id = resp.get("sgid")
+
+            LOG.debug("Creating entry in database for auto assignment of guild group...")
+            with self._database.lock:
+                self._database.cursor.execute("INSERT INTO guilds(ts_group, guild_name, icon_id,channel_id,group_id) VALUES(?,?,?,?,?)",
+                                              (group_name, guild_name, icon_id, channel_id, group_id))
+                self._database.conn.commit()
 
             servergroup_permissions = self._create_guild_servergroup_permissions(icon_id)
-            ts_facade.servergroup_add_permissions(guild_servergroup_id, servergroup_permissions)
+            ts_facade.servergroup_add_permissions(group_id, servergroup_permissions)
 
-            groups.append({"sgid": resp.get("sgid"),
+            groups.append({"sgid": group_id,
                            "name": group_name})  # the newly created group has to be added to properly iterate over the guild groups
             self._sort_guild_groups_using_talk_power(groups, ts_facade)
 
@@ -229,7 +221,7 @@ class GuildService:
                                                                            channelgroup_id=contactgroup.get("cgid"),
                                                                            client_db_id=user.ts_db_id)
                                     # while we are at it, add the contacts to the guild group as well
-                                    ts_facade.servergroup_client_add(servergroup_id=guild_servergroup_id,
+                                    ts_facade.servergroup_client_add(servergroup_id=group_id,
                                                                      client_db_id=user.ts_db_id)
 
                                     errored = ex is not None
@@ -242,6 +234,18 @@ class GuildService:
                                           "guild channel for %s. Maybe the uid is not valid anymore.",
                                           self._config.guild_contact_channel_group, c, acc, guild_name, exc_info=ex)
             return SUCCESS
+
+    def _create_guild_channel_permissions(self, icon_id=None):
+        permissions = [
+            ("i_channel_needed_join_power", 25),
+            ("i_channel_needed_subscribe_power", 25),
+            ("i_channel_needed_modify_power", 45),
+            ("i_channel_needed_delete_power", 75)
+        ]
+        sub_channel_permissions = permissions.copy()
+        if icon_id is not None:
+            sub_channel_permissions.append(("i_icon_id", icon_id))
+        return permissions, sub_channel_permissions
 
     def _find_guild_channels(self, parent, channel_list):
         # assert channel and group both exist and parent channel is available
@@ -257,7 +261,7 @@ class GuildService:
                             None)
         return contactgroup
 
-    def _create_guild_servergroup_permissions(self, icon_id):
+    def _create_guild_servergroup_permissions(self, icon_id=None):
         perms = [
             ("b_group_is_permanent", 1),
             ("i_group_show_name_in_tree", 1),
@@ -329,47 +333,30 @@ class GuildService:
 
         with self._database.lock:
             db_guild_entity = self._database.cursor.execute(
-                "SELECT ts_group,guild_name,icon_id FROM guilds WHERE lower(guild_name) = lower(?)", (name,)).fetchone()
-            guild_group_name, guild_name, current_icon_id = db_guild_entity if db_guild_entity is not None else [None, None, None]
+                "SELECT guild_id,ts_group,guild_name,channel_id,group_id,icon_id FROM guilds WHERE lower(guild_name) = lower(?)", (name,)).fetchone()
+            id, guild_group_name, guild_name, channel_id, current_group_id, group_id, current_icon_id = db_guild_entity if db_guild_entity is not None else [None, None, None, None, None, None, None]
 
         if guild_group_name is None or guild_name is None:
             return NO_DB_ENTRY
 
         with self.ts_connection_pool.item() as ts3_facade:
-            # CHANNEL
-            found_channels = ts3_facade.channel_find_all(guild_name)
-            if found_channels is None or len(found_channels) == 0:
-                LOG.debug("No channel found to delete.")
-            else:
-                regex = re.compile(r"^" + re.escape(guild_name) + r"\s\[\w{1,4}\]$")
-                for channel in found_channels:
-                    if regex.fullmatch(channel.name) is not None:
-                        LOG.info("Deleting channel '%s' with id %s.", channel.channel_name, channel.id)
-                        ts3_facade.channel_delete(channel.id, force=True)
-                    else:
-                        LOG.debug("Channel %s does not match exaclty.", channel.name)
 
-            # GROUP
-            groups = ts3_facade.servergroup_list()
-            group = next((g for g in groups if g.get("name") == guild_group_name), None)
-            if group is None:
-                LOG.debug("No group '%s' to delete.", guild_group_name)
-            else:
-                LOG.debug("Deleting group '%s'.", guild_group_name)
-                ts3_facade.servergroup_delete(group.get("sgid"), force=True)
+            channel_id = channel_id or self._find_guild_channel_id_by_guild_name(ts3_facade, guild_name)
+            if channel_id is not None:
+                ts3_facade.channel_delete(channel_id, force=True)
+
+            group_id = group_id or self._find_guild_group_id_by_guild_group_name(ts3_facade, guild_group_name)
+            if group_id is not None:
+                ts3_facade.servergroup_delete(group_id, force=True)
 
             if current_icon_id is not None:
                 LOG.debug("Removing Icon based on stored icon ID")
                 ts3_facade.remove_icon_if_exists(current_icon_id)
-            else:  # legacy
-                LOG.debug("Removing Icon based on calculated icon id (legacy)")
-                guild_icon_id = self.generate_guild_icon_id(guild_name, None)
-                ts3_facade.remove_icon_if_exists(guild_icon_id)
 
         # FROM DB
         LOG.debug("Deleting guild '%s' from DB.", guild_name)
         with self._database.lock:
-            self._database.cursor.execute("DELETE FROM guilds WHERE guild_name = ?", (guild_name,))
+            self._database.cursor.execute("DELETE FROM guilds WHERE guild_id = ?", (id,))
             self._database.conn.commit()
 
         return SUCCESS
@@ -409,36 +396,123 @@ class GuildService:
             # Old Method
             return binascii.crc32(name.encode('utf8'))
 
-    def update_icon(self, db_id, guild_id, guild_name, ts_group, guild_emblem, icon_id_to_replace):
-        if guild_name is not None:
-            icon_id = self.generate_guild_icon_id(guild_name, guild_emblem)
-            icon_content = download_guild_emblem(guild_id)
-            if icon_content is not None:
-                with self.ts_connection_pool.item() as ts3_facade:
-
-                    ts3_facade.upload_icon(icon_id, icon_content)
-
-                    found_channels = ts3_facade.channel_find_all(guild_name)
-                    if found_channels is None or len(found_channels) == 0:
-                        LOG.warning("No channel found to update.")
-                    elif len(found_channels) == 1:
-                        ts3_facade.channel_add_permission(found_channels[0].id, PERMISSION_ICON_ID, icon_id)
-                    else:
-                        LOG.warning("More than one channel to Update, skipping channel update")
-
-                    groups = ts3_facade.servergroup_list()
-                    group = next((g for g in groups if g.get("name") == ts_group), None)
-                    if group is None:
-                        LOG.debug("No group '%s' to update.", ts_group)
-                    else:
-                        server_group_id = group.get("sgid")
-                        ts3_facade.servergroup_add_permission(server_group_id, PERMISSION_ICON_ID, icon_id)
+    def _audit_icon(self, db_id, guild_id, icon_id_to_replace, icon_id):
+        icon_content = download_guild_emblem(guild_id)
+        if icon_content is not None:
+            with self.ts_connection_pool.item() as ts3_facade:
+                ts3_facade.upload_icon(icon_id, icon_content)
 
                 if icon_id_to_replace is not None:
                     ts3_facade.remove_icon_if_exists(icon_id_to_replace)
-                else:
-                    ts3_facade.remove_icon_if_exists(self.generate_guild_icon_id(guild_name, None))
 
-                with self._database.lock:
-                    self._database.cursor.execute("UPDATE guilds SET icon_id = ? WHERE guild_id = ?", (icon_id, db_id,))
-                    self._database.conn.commit()
+            with self._database.lock:
+                self._database.cursor.execute("UPDATE guilds SET icon_id = ? WHERE guild_id = ?", (icon_id, db_id,))
+                self._database.conn.commit()
+
+    def _find_guild_channel_id_by_guild_name(self, ts3_facade, guild_name: str) -> Optional[int]:
+        # CHANNEL
+        found_channels = ts3_facade.channel_find_all(guild_name)
+        if found_channels is None or len(found_channels) == 0:
+            LOG.debug("No channel found to delete.")
+            return None
+        else:
+            regex = re.compile(r"^" + re.escape(guild_name) + r"\s\[\w{1,4}\]$")
+            for channel in found_channels:
+                if regex.fullmatch(channel.name) is not None:
+                    LOG.info("Deleting channel '%s' with id %s.", channel.channel_name, channel.id)
+                    return channel.id
+                else:
+                    LOG.debug("Channel %s does not match exaclty.", channel.name)
+
+    def _find_guild_group_id_by_guild_group_name(self, ts3_facade, group_name: str) -> Optional[int]:
+        # GROUP
+        groups = ts3_facade.servergroup_list()
+        group = next((g for g in groups if g.get("name") == group_name), None)
+        if group is None:
+            LOG.debug("No group '%s' to delete.", group_name)
+        else:
+            return group.get("sgid")
+
+    def rename_group(self, group_id, desired_name):
+        with self.ts_connection_pool.item() as ts3_facade:
+            ts3_facade.servergroup_rename(group_id, desired_name)
+
+    def detect_group_id(self, ts3_facade, db_id, ts_group) -> int:
+        group_id = self._find_guild_group_id_by_guild_group_name(ts3_facade, ts_group)
+        with self._database.lock:
+            self._database.cursor.execute("UPDATE guilds SET group_id = ? WHERE guild_id = ?", (group_id, db_id,))
+            self._database.conn.commit()
+        return group_id
+
+    def detect_channel_id(self, ts3_facade, db_id, guild_name) -> int:
+        channel_id = self._find_guild_channel_id_by_guild_name(ts3_facade, guild_name)
+        with self._database.lock:
+            self._database.cursor.execute("UPDATE guilds SET channel_id = ? WHERE guild_id = ?", (channel_id, db_id,))
+            self._database.conn.commit()
+        return channel_id
+
+    def _audit_channel(self, ts3_facade, channel_id, guild_name, guild_tag, icon_id):
+        desired_name = self._build_channel_name(guild_name, guild_tag)
+        c, _ = ts3_facade.channel_info(channel_id)
+        current_channel_name = c.get('channel_name')
+        if current_channel_name != desired_name:
+            LOG.info("Updating channel name from %s to %s", current_channel_name, desired_name)
+            ts3_facade.channel_edit(channel_id, desired_name)
+
+        permissions, sub_channel_permissions = self._create_guild_channel_permissions(icon_id)
+        ts3_facade.channel_add_permissions(channel_id, permissions)
+        # TODO: Set subchannel permissions aswell
+
+    def _audit_group(self, ts3_facade, group_id, ts_group, icon_id):
+        self.rename_group(group_id, ts_group)
+        permissions = self._create_guild_servergroup_permissions(icon_id)
+        ts3_facade.servergroup_add_permissions(group_id, permissions)
+
+    def audit_guild(self, db_id: int):
+        with self._database.lock:
+            db_guild_entity = self._database.cursor.execute("SELECT guild_name,ts_group,icon_id,gw2_guild_id,channel_id,group_id FROM guilds WHERE guild_id = ?", (db_id,)).fetchone()
+            guild_name, ts_group, current_icon_id, gw2_guild_id, channel_id, group_id = db_guild_entity if db_guild_entity is not None else [None, None, None, None, None, None]
+
+        if gw2_guild_id is None:
+            if guild_name is not None:
+                gw2_guild_id = gw2api.guild_search(guild_name)
+                if gw2_guild_id is not None:
+                    with self._database.lock:
+                        self._database.cursor.execute("UPDATE guilds SET gw2_guild_id = ? WHERE guild_id = ?", (gw2_guild_id, db_id,))
+                        self._database.conn.commit()
+                else:
+                    LOG.warning("Guild %s is not available form the gw2 api anymore", guild_name)
+                    return
+            else:
+                LOG.error("Guild %s has no id or name", db_id)
+                return
+
+        guild_info = gw2api.guild_get(gw2_guild_id)
+        if guild_info is not None:
+            guild_name = guild_info.get("name")
+            guild_tag = guild_info.get("tag")
+            guild_id = guild_info.get("id")
+            guild_emblem = guild_info.get("emblem")
+
+            with self.ts_connection_pool.item() as ts3_facade:
+                # refresh Icon
+                LOG.info("Auditing Icon...")
+                icon_id = self.generate_guild_icon_id(guild_name, guild_emblem)
+                if current_icon_id != icon_id:
+                    LOG.info("Updating Icon !")
+                    self._audit_icon(db_id, guild_id, current_icon_id, icon_id)
+
+                LOG.info("Auditing Channel...")
+                channel_id = channel_id or self.detect_channel_id(ts3_facade, db_id, guild_name)
+                if channel_id is not None:
+                    self._audit_channel(ts3_facade, channel_id, guild_name, guild_tag, icon_id)
+
+                LOG.info("Auditing Group...")
+                group_id = group_id or self.detect_group_id(ts3_facade, db_id, ts_group)
+                if group_id is not None:
+                    self._audit_group(ts3_facade, group_id, ts_group, icon_id)
+
+
+        else:
+            LOG.warning("Guild Details %s (%s) are not available form the gw2 api anymore", guild_name, gw2_guild_id)
+            return

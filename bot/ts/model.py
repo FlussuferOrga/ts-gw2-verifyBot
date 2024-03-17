@@ -30,14 +30,14 @@ class User:
         return "User[unique_id: %s, ts_db_id: %s, client_id: %s]" % (self.unique_id, self.ts_db_id, self._client_id)
 
     @property
-    def current_channel(self):
+    def current_channel_id(self) -> int:
         client_id = self.client_id
         if client_id is None:
             return None
         client_info = self._ts_facade.client_info(client_id=client_id)
         if client_info:
             self._ts_db_id = client_info.get("client_database_id")  # since we are already retrieving this information...
-        return Channel(client_info.get("cid")) if client_info else None
+        return client_info.get("cid") if client_info else None
 
     @property
     def name(self):
@@ -91,7 +91,8 @@ class User:
 
 
 class Channel:
-    def __init__(self, channel_id: int, channel_name: Optional[str] = None):
+
+    def __init__(self, channel_id: int, channel_name: Optional[str] = None, parent_id: int = None):
         self._channel_id: int = channel_id
         self._channel_name: Optional[str] = channel_name
 

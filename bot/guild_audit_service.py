@@ -51,7 +51,7 @@ class GuildAuditService:
             try:
                 item = queue.get(timeout=5)
                 LOG.debug('Working on %s:', item.db_id)
-                self.audit_guild(item.db_id)
+                self._guild_service.audit_guild(item.db_id)
             except Empty:
                 return  # empty
             except BaseException as ex:  # any error that occurs
@@ -68,30 +68,7 @@ class GuildAuditService:
         self.audit_thread.start()
         LOG.info("Audit Worker is started and pulling audit jobs")
 
-    def audit_guild(self, db_id: int):
-        with self._database_connection.lock:
-            db_guild_entity = self._database_connection.cursor.execute(
-                "SELECT guild_id,guild_name,ts_group,icon_id,gw2_guild_id FROM guilds WHERE guild_id = ?", (db_id,)).fetchone()
-            stored_guild_id, guild_name, ts_group, current_icon_id, gw2_guild_id = db_guild_entity if db_guild_entity is not None else [None, None, None, None, None]
-        if guild_name is not None:
-            guild_info = gw2api.guild_get(gw2api.guild_search(guild_name))
 
-            if guild_info is not None:
-                guild_name = guild_info.get("name")
-                # guild_tag = guild_info.get("tag")
-                guild_id = guild_info.get("id")
-                guild_emblem = guild_info.get("emblem")
-
-                if gw2_guild_id is None:
-                    with self._database_connection.lock:
-                        self._database_connection.cursor.execute("UPDATE guilds SET gw2_guild_id = ? WHERE guild_id = ?", (guild_id, db_id,))
-                        self._database_connection.conn.commit()
-
-                icon_id = self._guild_service.generate_guild_icon_id(guild_name, guild_emblem)
-                if current_icon_id != icon_id:
-                    self._guild_service.update_icon(db_id, guild_id, guild_name, ts_group, guild_emblem, current_icon_id)
-            else:
-                LOG.warning("Guild %s is not available form the gw2 api anymore", guild_name)
 
     def trigger_guild_audit(self):
         LOG.info("Auditing guilds")
@@ -119,3 +96,5 @@ class GuildAuditService:
     def close(self):
         self.audit_thread.close()
         pass
+
+

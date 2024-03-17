@@ -53,8 +53,4 @@ class ResetRosterService:
         if channel is None:
             LOG.warning("No channel found with pattern '%s'. Skipping.", channel_name_pattern)
         else:
-            _, ts3qe = facade.channel_edit(channel_id=channel.channel_id, new_channel_name=new_channel_name)
-            if ts3qe is not None and ts3qe.resp.error["id"] == "771":
-                # channel name already in use
-                # probably not a bug (channel still unused), but can be a config problem
-                LOG.info("Channel '%s' already exists. This is probably not a problem. Skipping.", new_channel_name)
+            facade.set_channel_name(channel_id=channel.channel_id, new_channel_name=new_channel_name)

@@ -257,3 +257,8 @@ class TS3Facade:
 
     def server_info(self):
         return self._ts3_connection.ts3exec_raise(lambda t: t.query("serverinfo").first())
+
+    def servergroup_rename(self, group_id: int, desired_name: str):
+        return self._ts3_connection.ts3exec(lambda tsc: tsc.exec_("servergrouprename", sgid=group_id, name=desired_name), signal_exception_handler)
+
+    pass

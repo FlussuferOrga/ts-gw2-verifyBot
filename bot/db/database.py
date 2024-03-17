@@ -30,9 +30,12 @@ def _initialize_database(dbc, version):
         # GUILD INFO
         dbc.cursor.execute('''CREATE TABLE guilds(
                             guild_id integer primary key autoincrement,
+                            gw2_guild_id text,
                             guild_name text UNIQUE,
                             ts_group text UNIQUE,
-                            icon_id integer)''')
+                            icon_id integer,
+                            channel_id integer,
+                            group_id integer)''')
         dbc.conn.commit()
 
         # GUILD IGNORES

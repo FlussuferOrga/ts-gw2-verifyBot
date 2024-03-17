@@ -3,7 +3,7 @@ import logging
 from flask import jsonify, request
 from werkzeug.exceptions import BadRequest, HTTPException
 
-from bot import GuildService
+from bot import GuildAuditService, GuildService
 from bot.rest.controller.abstract_controller import AbstractController
 from bot.rest.utils import try_get
 
@@ -11,9 +11,10 @@ LOG = logging.getLogger(__name__)
 
 
 class GuildController(AbstractController):
-    def __init__(self, guild_service: GuildService):
+    def __init__(self, guild_service: GuildService, audit_serice: GuildAuditService):
         super().__init__()
         self._service = guild_service
+        self._audit_service = audit_serice
 
     @staticmethod
     def validate_name(name):
@@ -66,3 +67,9 @@ class GuildController(AbstractController):
                 return jsonify("OK")
             else:
                 raise BadRequest(f"Operation was not successful. Response code: {res}")
+
+        @self.api.route("/guild/_audit", methods=["POST"])
+        def _trigger_audit():
+            LOG.info("Received request to audit guilds")
+            self._audit_service.trigger_guild_audit()
+            return jsonify("Triggered")
