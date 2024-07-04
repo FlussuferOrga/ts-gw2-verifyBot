@@ -455,7 +455,7 @@ class GuildService:
         desired_name = self._build_channel_name(guild_name, ts_group)
         c, _ = ts3_facade.channel_info(channel_id)
         if c is None:
-            LOG.info(f"Guild ${guild_name} does not have a channel")
+            LOG.info(f"Guild ${guild_name} (${ts_group}) does not have a channel")
             return
         current_channel_name = c.get('channel_name')
         if current_channel_name != desired_name:
