@@ -108,7 +108,7 @@ class ThreadSafeTSConnection:
         self.close()
 
     def keepalive(self):
-        LOG.info("Keepalive %s", self)
+        # LOG.info("Keepalive %s", self)
         with self.lock:
             try:
                 self.ts3exec_raise(lambda tc: tc.send_keepalive())
