@@ -32,9 +32,9 @@ def register_open_api_endpoints(app):
 def register_controller(app, bot):
     controller = [
         HealthController(),
-        GuildController(bot.guild_service,bot.guild_audit_service),
+        GuildController(bot.guild_service, bot.guild_audit_service),
         ResetRosterController(bot.reset_roster_service),
-        RegistrationController(bot.user_service,bot.audit_service),
+        RegistrationController(bot.user_service, bot.audit_service),
         CommandersController(bot.commander_service)
     ]
     for ctrl in controller:

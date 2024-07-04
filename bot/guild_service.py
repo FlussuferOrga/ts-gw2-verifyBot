@@ -166,7 +166,7 @@ class GuildService:
                                                      channel_parent_id=parent.channel_id,
                                                      channel_maxclients=0,
                                                      channel_order=sort_order)
-                channel_id = cinfo.get("cid");
+                channel_id = cinfo.get("cid")
                 guild_channel_perms, perms = self._create_guild_channel_permissions(icon_id)
                 ts_facade.channel_add_permissions(channel_id, perms)
 
@@ -489,7 +489,7 @@ class GuildService:
         guild_info = gw2api.guild_get(gw2_guild_id)
         if guild_info is not None:
             guild_name = guild_info.get("name")
-            guild_tag = guild_info.get("tag")
+            # guild_tag = guild_info.get("tag")
             guild_id = guild_info.get("id")
             guild_emblem = guild_info.get("emblem")
 
@@ -510,8 +510,6 @@ class GuildService:
                 group_id = group_id or self.detect_group_id(ts3_facade, db_id, ts_group)
                 if group_id is not None:
                     self._audit_group(ts3_facade, group_id, ts_group, icon_id)
-
-
         else:
             LOG.warning("Guild Details %s (%s) are not available form the gw2 api anymore", guild_name, gw2_guild_id)
             return

@@ -18,7 +18,7 @@ class TestGuildController(TestCase):
         self._service_mock = MagicMock()
         self._audit_service_mock = MagicMock()
 
-        controller = GuildController(self._service_mock,self._audit_service_mock)
+        controller = GuildController(self._service_mock, self._audit_service_mock)
 
         flask.register_blueprint(controller.api)
         bot.rest.bootstrap.register_error_handlers(flask)

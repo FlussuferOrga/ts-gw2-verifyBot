@@ -80,18 +80,17 @@ def use_color():
 
 def create_console_formatter():
     if use_color():
-        field_styles = dict(
-            levelname=dict(color='black'),
-            name=dict(color='blue'),
-            threadName=dict(color='white', faint=True),
-        )
-        level_styles = dict(
-            debug=dict(color='green'),
-            info=dict(color='blue'),
-            warning=dict(color='yellow'),
-            error=dict(color='red', bold=True),
-            critical=dict(color='red', bold=True, inverse=True),
-        )
+        field_styles = {
+            'levelname': {'color': 'black'},
+            'name': {'color': 'blue'},
+            'threadName': {'color': 'white', 'faint': True}}
+        level_styles = {
+            'debug': {'color': 'green'},
+            'info': {'color': 'blue'},
+            'warning': {'color': 'yellow'},
+            'error': {'color': 'red', 'bold': True},
+            'critical': {'color': 'red', 'bold': True, 'inverse': True}
+        }
         colored_formatter = CustomColoredFormatter(fmt=FORMAT_CONSOLE, field_styles=field_styles, level_styles=level_styles)
         return colored_formatter
     else:

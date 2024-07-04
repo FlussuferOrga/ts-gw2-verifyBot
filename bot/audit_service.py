@@ -156,7 +156,6 @@ class AuditService:
             self.queue_user_audit(QUEUE_PRIORITY_HIDE_UNHIDE_GUILD, account_name=account_name, api_key=api_key,
                                   client_unique_id=client_unique_id)
 
-
     def close(self):
         self.audit_thread.close()
         pass

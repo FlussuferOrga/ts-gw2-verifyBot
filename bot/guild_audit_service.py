@@ -5,7 +5,6 @@ import threading
 from dataclasses import dataclass, field
 from queue import Empty, PriorityQueue
 
-import bot.gwapi as gw2api
 from bot.config import Config
 from bot.connection_pool import ConnectionPool
 from bot.db import ThreadSafeDBConnection
@@ -35,7 +34,8 @@ class GuildAuditService:
         self._ts_connection_pool = ts_connection_pool
         self._config = config
 
-        self._audit_queue: PriorityQueue[GuildAuditQueueEntry] = PriorityQueue()  # pylint: disable=unsubscriptable-object
+        self._audit_queue: PriorityQueue[
+            GuildAuditQueueEntry] = PriorityQueue()  # pylint: disable=unsubscriptable-object
         self._start_audit_queue_worker()
 
     def queue_guild_audit(self, priority: int, db_id: int):
@@ -68,8 +68,6 @@ class GuildAuditService:
         self.audit_thread.start()
         LOG.info("Audit Worker is started and pulling audit jobs")
 
-
-
     def trigger_guild_audit(self):
         LOG.info("Auditing guilds")
         threading.Thread(name="FullGuildAudit", target=self._audit_guilds, daemon=True).start()
@@ -96,5 +94,3 @@ class GuildAuditService:
     def close(self):
         self.audit_thread.close()
         pass
-
-

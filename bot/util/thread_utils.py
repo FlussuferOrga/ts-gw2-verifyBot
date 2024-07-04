@@ -13,10 +13,10 @@ def thread_dump() -> str:
     frames = sys._current_frames()
 
     for threadId, stack in frames.items():
-        code.append("\n# Thread: %s(%d)" % (id2name[threadId], threadId))
+        code.append(f"\n# Thread: {id2name[threadId]}({threadId:d})")
         for filename, lineno, name, line in traceback.extract_stack(stack):
-            code.append('File: "%s", line %d, in %s' % (filename, lineno, name))
+            code.append(f'File: "{filename}", line {lineno:d}, in {name}')
             if line:
-                code.append(" %s" % (line.strip()))
+                code.append(f" {line.strip()}")
     join = "\n".join(code)
     return join
