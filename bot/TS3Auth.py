@@ -103,7 +103,7 @@ class AuthRequest:
         LOG.info("%s %s Running auth check for %s", h_hdr, h_auth, self.name)
 
         # Check if they are on the required server
-        if self.users_server in self.required_servers:
+        if self.required_servers == [] or self.users_server in self.required_servers:
             # Check if player has met character requirements
             if self.char_check:
                 self.success = True
