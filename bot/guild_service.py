@@ -334,7 +334,7 @@ class GuildService:
         with self._database.lock:
             db_guild_entity = self._database.cursor.execute(
                 "SELECT guild_id,ts_group,guild_name,channel_id,group_id,icon_id FROM guilds WHERE lower(guild_name) = lower(?)", (name,)).fetchone()
-            id, guild_group_name, guild_name, channel_id, group_id, current_icon_id = db_guild_entity if db_guild_entity is not None else [None, None, None, None, None, None]
+            guild_id, guild_group_name, guild_name, channel_id, group_id, current_icon_id = db_guild_entity if db_guild_entity is not None else [None, None, None, None, None, None]
 
         if guild_group_name is None or guild_name is None:
             return NO_DB_ENTRY
@@ -356,7 +356,7 @@ class GuildService:
         # FROM DB
         LOG.debug("Deleting guild '%s' from DB.", guild_name)
         with self._database.lock:
-            self._database.cursor.execute("DELETE FROM guilds WHERE guild_id = ?", (id,))
+            self._database.cursor.execute("DELETE FROM guilds WHERE guild_id = ?", (guild_id,))
             self._database.conn.commit()
 
         return SUCCESS

@@ -79,7 +79,7 @@ class ThreadSafeTSConnection:
             if self._ts_connection is not None:
                 pass
 
-            tp_args = dict()
+            tp_args = {}
             if self._protocol == "ssh" and self._known_hosts_file is not None:
                 tp_args["host_key"] = self._known_hosts_file
 
@@ -106,7 +106,6 @@ class ThreadSafeTSConnection:
 
     def __exit__(self, exc_type, exc_value, tb):
         self.close()
-        return None
 
     def keepalive(self):
         LOG.info("Keepalive %s", self)

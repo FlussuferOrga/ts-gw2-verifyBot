@@ -93,4 +93,3 @@ class GuildAuditService:
 
     def close(self):
         self.audit_thread.close()
-        pass
