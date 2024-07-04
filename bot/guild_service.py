@@ -454,6 +454,9 @@ class GuildService:
     def _audit_channel(self, ts3_facade, channel_id, guild_name, ts_group, icon_id):
         desired_name = self._build_channel_name(guild_name, ts_group)
         c, _ = ts3_facade.channel_info(channel_id)
+        if c is None:
+            LOG.info(f"Guild ${guild_name} does not have a channel")
+            return
         current_channel_name = c.get('channel_name')
         if current_channel_name != desired_name:
             LOG.info("Updating channel name from %s to %s", current_channel_name, desired_name)
