@@ -34,7 +34,7 @@ def register_controller(app, bot):
         HealthController(),
         GuildController(bot.guild_service,bot.guild_audit_service),
         ResetRosterController(bot.reset_roster_service),
-        RegistrationController(bot.user_service),
+        RegistrationController(bot.user_service,bot.audit_service),
         CommandersController(bot.commander_service)
     ]
     for ctrl in controller:

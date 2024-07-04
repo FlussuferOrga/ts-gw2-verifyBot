@@ -77,6 +77,21 @@ paths:
                 properties:
                   changes:
                     type: integer
+  /registration/_audit:
+    post:
+      summary: Start audit
+      operationId: startAudit
+      tags:
+        - registration
+      responses:
+        default:
+          $ref: '#/components/responses/genericErrorResponse'
+        200:
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                type: string
   /commanders:
     get:
       summary: List active commanders
