@@ -213,6 +213,7 @@ class GuildService:
                         accs = [row[0] for row in self._database.cursor.execute(
                             "SELECT ts_db_id FROM users WHERE lower(account_name) = lower(?)", (c,)).fetchall()]
                         for acc in accs:
+                            errored = False
                             try:
                                 LOG.debug("Adding contact role to %s Identity: %s", c, acc)
                                 user = User(ts_facade, unique_id=acc)
