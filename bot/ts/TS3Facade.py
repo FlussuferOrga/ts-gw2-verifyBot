@@ -217,11 +217,12 @@ class TS3Facade:
         response, ex = self._ts3_connection.ts3exec(lambda t: t.query("clientgetdbidfromuid", cluid=client_uid).first().get("cldbid"), exception_handler=signal_exception_handler)
         if ex is None:
             return response
-        else:
-            if hasattr(ex, "resp") and ex.resp is not None:
-                if ex.resp.error["id"] == "512":
-                    # user not found
-                    return None
+
+        if hasattr(ex, "resp") and ex.resp is not None:
+            if ex.resp.error["id"] == "512":
+                # user not found
+                return None
+
         raise ex
 
     def client_ids_from_uid(self, client_uid) -> List[str]:

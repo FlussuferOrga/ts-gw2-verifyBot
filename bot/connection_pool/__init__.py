@@ -184,7 +184,7 @@ class ConnectionPool(Generic[_T]):
         else:
             LOG.debug("Connection %s will be released into the pool", wrapped)
             self._pool.put_nowait(wrapped)
-            self._lock.notifyAll()  # Notify other threads that there are idle connections available
+            self._lock.notify_all()  # Notify other threads that there are idle connections available
         finally:
             self._lock.release()
 
@@ -224,13 +224,13 @@ class ConnectionPool(Generic[_T]):
     def _test(self, wrapped):
         """Test the availability of the connection, and throw an Expired exception when it is not available"""
         if self._max_usage and wrapped.usage >= self._max_usage:
-            raise UsageExceeded("Usage exceeds %d times" % self._max_usage)
+            raise UsageExceeded(f"Usage exceeds {self._max_usage:d} times")
 
         if self._ttl and (wrapped.created + self._ttl) < time.time():
-            raise TtlExceeded("TTL exceeds %d secs" % self._ttl)
+            raise TtlExceeded(f"TTL exceeds {self._ttl:d} secs")
 
         if self._idle and (wrapped.last + self._idle) < time.time():
-            raise IdleExceeded("Idle exceeds %d secs" % self._idle)
+            raise IdleExceeded(f"Idle exceeds {self._idle:d} secs")
 
         if self._test_function:
             try:

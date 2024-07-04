@@ -327,7 +327,7 @@ class EventLooper:
 
     def _extract_command(self, command_string):
         for allowed_cmd in self._config.cmd_list:
-            if re.match(r'(^%s)\s*' % (allowed_cmd,), command_string):
+            if re.match(fr'(^{allowed_cmd})\s*', command_string):
                 toks = command_string.split()  # no argument for split() splits on arbitrary whitespace
                 return toks[0], toks[1:]
         return None, None

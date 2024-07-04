@@ -22,14 +22,14 @@ class HTTPServer(Flask):
         self.port = port
 
         self._server = None
-        self._map = dict()
+        self._map = {}
 
         self._thread = self._create_thread()
-        self._thread.setName("Webserver")
+        self._thread.name = "Webserver"
 
     def start(self):
         LOG.debug("Starting HTTP Server...")
-        self._thread.setDaemon(True)
+        self._thread.daemon = True
         self._thread.start()
 
     def _create_thread(self):

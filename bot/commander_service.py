@@ -29,7 +29,7 @@ class CommanderService:
         self._server_public_password = config.server_public_password
 
         with self._ts_connection_pool.item() as facade:
-            channel_list, ex = facade.channelgroup_list()
+            channel_list, _ = facade.channelgroup_list()
             cgroups = list(filter(lambda g: g.get("name") in self._commander_group_names, channel_list))
 
             server_info = facade.server_info()
@@ -56,10 +56,9 @@ class CommanderService:
     def extract_type(group_name) -> LeadType:
         if "PPK" in group_name:
             return LeadType.PPK
-        elif "PPT" in group_name:
+        if "PPT" in group_name:
             return LeadType.PPT
-        else:
-            return LeadType.UNKNOWN
+        return LeadType.UNKNOWN
 
     def get_active_commanders(self):
         if not self._commander_groups:
@@ -139,7 +138,7 @@ class CommanderService:
             args["cid"] = channel_id
 
         servername = self._server_public_address
-        return self._build_url("https://invite.teamspeak.com", "%s/" % servername, args)
+        return self._build_url("https://invite.teamspeak.com", f"{servername}/", args)
 
     @staticmethod
     def _build_url(base_url, path, args_dict):

@@ -72,15 +72,15 @@ def error_checked(decorator):
             if json is not None and "text" in json:
                 error_text = json["text"]
                 if error_text == "Invalid access token":
-                    raise ApiKeyInvalidError(error_text)
+                    raise ApiKeyInvalidError(error_text) from e
                 if error_text == "too many requests":
-                    raise ApiUnavailableError("Rate Limited")
+                    raise ApiUnavailableError("Rate Limited") from e
                 if error_text == "ErrTimeout":  # happens on login server down
-                    raise ApiUnavailableError(error_text)
+                    raise ApiUnavailableError(error_text) from e
                 if error_text == "ErrInternal":
-                    raise ApiUnavailableError(error_text)
-                if error_text == "invalid key" or error_text == "Invalid access token":  # when key is invalid or not a key at all
-                    raise ApiKeyInvalidError(error_text)
+                    raise ApiUnavailableError(error_text) from e
+                if error_text in ("invalid key", "Invalid access token"):  # when key is invalid or not a key at all
+                    raise ApiKeyInvalidError(error_text) from e
                 LOG.warning("API Returned Error %s - %s", status_code, error_text)
                 raise ApiError(str(status_code) + ":" + error_text) from e
             LOG.warning("API Returned %s - %s", status_code, e.response.text)

@@ -1,9 +1,9 @@
 import logging
 import os
+import sys
 from typing import Optional, Union
 
 import coloredlogs
-import sys
 from humanfriendly.compat import coerce_string, on_windows
 from humanfriendly.terminal import ansi_wrap, enable_ansi_support, terminal_supports_colors
 

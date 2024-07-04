@@ -113,4 +113,4 @@ class Channel:
         return self._channel_name
 
     def __str__(self) -> str:
-        return "Channel[id=%s,name=%s]" % (self.id, self.name)
+        return f"Channel[id={self.id},name={self.name}]"

@@ -23,7 +23,7 @@ class StringShortener:
         i = 0
         res = ""
         while i < len(ts) and len(res + ts[i]) + i <= length:
-            res = "%s %s" % (res, ts[i])
+            res = f"{res} {ts[i]}"
             i += 1
         res = res.strip()
         return res if len(res) > 0 else string
@@ -44,7 +44,7 @@ class StringShortener:
         """
         assert length > 3
         dots = "..."
-        return "%s%s" % (string[:(length - len(dots))], dots) if len(string) > length else string
+        return f"{string[:(length - len(dots))]}{dots}" if len(string) > length else string
 
     @staticmethod
     def force(string, length):

@@ -8,7 +8,7 @@ LOG = logging.getLogger(__name__)
 
 
 def setup_signals():
-    def handle(sig, frame):
+    def handle(sig, _):
         LOG.info("Received Signal: %s '%s'.", sig, signal.strsignal(sig))
         raise SystemExit
 

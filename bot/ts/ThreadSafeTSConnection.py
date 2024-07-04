@@ -40,7 +40,7 @@ class ThreadSafeTSConnection:
 
     @property
     def uri(self):
-        return "%s://%s:%s@%s:%s" % (self._protocol, self._user, self._password, self._host, str(self._port))
+        return f"{self._protocol}://{self._user}:{self._password}@{self._host}:{str(self._port)}"
 
     def __init__(self, protocol, user, password, host, port, keepalive_interval=None, server_id=None, bot_nickname=None, known_hosts_file: str = None):
         """
@@ -127,8 +127,7 @@ class ThreadSafeTSConnection:
             self.ts3exec_raise(lambda tc: tc.send_keepalive())
         except Exception as ex:
             raise TS3TransportError("Connection is unhealthy") from ex
-        else:
-            return True
+        return True
 
     def ts3exec_raise(self, handler: Callable[[TS3ServerConnection], R]) -> R:
         return self.ts3exec(handler, raise_exception_handler)[0]
@@ -206,11 +205,11 @@ class ThreadSafeTSConnection:
         to the name if the nickname is already taken.
         """
         i = 1
-        new_nick = "%s(%d)" % (nickname, i)
+        new_nick = f"{nickname}({i:d})"
         while not self.ts3exec(lambda tc: tc.query("clientfind", pattern=new_nick).first(), signal_exception_handler)[1]:
             i += 1
-            new_nick = "%s(%d)" % (nickname, i)
-        new_nick = "%s(%d)" % (nickname, i)
+            new_nick = f"{nickname}({i:d})"
+        new_nick = f"{nickname}({i:d})"
         self.ts3exec(lambda tc: tc.exec_("clientupdate", client_nickname=new_nick))
         self._bot_nickname = new_nick
         return self._bot_nickname

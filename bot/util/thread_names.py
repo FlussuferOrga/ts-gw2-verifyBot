@@ -11,7 +11,7 @@ def enhance_thread_names():
         try:
             libcap = ctypes.CDLL(LIB)
         except OSError:
-            print('Library {} not found. Unable to set thread name.'.format(LIB))
+            print(f'Library {LIB} not found. Unable to set thread name.')
         else:
             # noinspection PyProtectedMember
             def _name_hack(self):

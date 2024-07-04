@@ -159,8 +159,8 @@ class UserService:
 
     def delete_registration(self, gw2account):
         with self._database_connection.lock:
-            tsDbIds = self._database_connection.cursor.execute("SELECT ts_db_id FROM users WHERE account_name = ?", (gw2account,)).fetchall()
-            for tdi, in tsDbIds:
+            ts_db_ids = self._database_connection.cursor.execute("SELECT ts_db_id FROM users WHERE account_name = ?", (gw2account,)).fetchall()
+            for tdi, in ts_db_ids:
                 self.remove_permissions(tdi)
                 LOG.debug("Removed permissions from %s", tdi)
             self._database_connection.cursor.execute("DELETE FROM users WHERE account_name = ?", (gw2account,))

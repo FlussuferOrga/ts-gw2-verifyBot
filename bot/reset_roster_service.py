@@ -42,7 +42,7 @@ class ResetRosterService:
                 lead = leads[i]
 
                 shortened = StringShortener(TS3_MAX_SIZE_CHANNEL_NAME - len(clean)).shorten(lead)
-                new_channel_name = "%s%s" % (clean, ", ".join(shortened))
+                new_channel_name = f"{clean}{', '.join(shortened)}"
 
                 self._rename_channel_if_exists(facade, pattern, new_channel_name)
         return 0

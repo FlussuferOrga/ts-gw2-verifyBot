@@ -300,7 +300,7 @@ class GuildService:
 
     @staticmethod
     def _build_channel_name(name: str, tag: str) -> str:
-        return "%s [%s]" % (name, tag)
+        return f"{name} [{tag}]"
 
     @staticmethod
     def _create_guild_channel_description(contacts, guild_id, name, tag):
