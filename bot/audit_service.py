@@ -22,6 +22,7 @@ LOG = logging.getLogger(__name__)
 
 QUEUE_PRIORITY_AUDIT = 100
 QUEUE_PRIORITY_JOIN = 20
+QUEUE_PRIORITY_HIDE_UNHIDE_GUILD = 15
 
 
 @dataclass(order=True)
@@ -146,6 +147,15 @@ class AuditService:
             api_key = db_entry["api_key"]
             self.queue_user_audit(QUEUE_PRIORITY_JOIN, account_name=account_name, api_key=api_key,
                                   client_unique_id=client_unique_id)
+
+    def audit_user_on_hide_unhide_guild(self, client_unique_id):
+        db_entry = self._user_service.get_user_database_entry(client_unique_id)
+        if db_entry is not None:
+            account_name = db_entry["account_name"]
+            api_key = db_entry["api_key"]
+            self.queue_user_audit(QUEUE_PRIORITY_HIDE_UNHIDE_GUILD, account_name=account_name, api_key=api_key,
+                                  client_unique_id=client_unique_id)
+
 
     def close(self):
         self.audit_thread.close()

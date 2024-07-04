@@ -200,6 +200,7 @@ class EventLooper:
                                     "INSERT INTO guild_ignores(guild_id, ts_db_id, ts_name) VALUES(?, ?, ?)",
                                     (guild_db_id, rec_from_uid, rec_from_name))
                                 self._database_connection.conn.commit()
+                                self._audit_service.audit_user_on_hide_unhide_guild(rec_from_uid)
                                 LOG.debug("Success!")
                                 self._ts_facade.send_text_message_to_client(rec_from_id,
                                                                             self._config.locale.get(
@@ -223,6 +224,7 @@ class EventLooper:
                         self._database_connection.conn.commit()
                         if changes > 0:
                             LOG.debug("Success!")
+                            self._audit_service.audit_user_on_hide_unhide_guild(rec_from_uid)
                             self._ts_facade.send_text_message_to_client(rec_from_id, self._config.locale.get(
                                 "bot_unhide_guild_success"))
                         else:
