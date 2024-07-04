@@ -88,7 +88,7 @@ class AuditService:
                         (date.today(), auth.name, client_unique_id))
                     self._database_connection.conn.commit()
             else:
-                LOG.info("User %s is no longer on our server. Removing access....", account_name)
+                LOG.info("User %s verification was not successful. Removing access....", account_name)
                 self._user_service.remove_permissions(client_unique_id)
                 self._user_service.remove_user_from_db(client_unique_id)
         except AuthorizationNotPossibleError as ex:
